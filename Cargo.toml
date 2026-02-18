@@ -1,0 +1,82 @@
+[workspace]
+members = ["crates/openedit-core", "crates/openedit-tools", "crates/openedit-ui"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["OpenEdit Contributors"]
+
+[workspace.dependencies]
+# Text buffer
+ropey = "1"
+
+# GUI
+eframe = "0.29"
+egui = "0.29"
+egui_extras = "0.29"
+
+# Encoding
+encoding_rs = "0.8"
+chardetng = "0.1"
+
+# File I/O
+rfd = "0.15"
+notify = "7"
+
+# Config
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Search
+regex = "1"
+walkdir = "2"
+glob = "0.3"
+
+# Syntax highlighting
+tree-sitter = "0.25"
+tree-sitter-highlight = "0.25"
+
+# Encoding/Transform
+base64 = "0.22"
+percent-encoding = "2"
+
+# Hashing
+md-5 = "0.10"
+sha1 = "0.10"
+sha2 = "0.10"
+digest = "0.10"
+
+# Markdown
+pulldown-cmark = "0.12"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+[package]
+name = "openedit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+openedit-core = { path = "crates/openedit-core" }
+openedit-tools = { path = "crates/openedit-tools" }
+openedit-ui = { path = "crates/openedit-ui" }
+eframe.workspace = true
+egui.workspace = true
+env_logger.workspace = true
+log.workspace = true
+anyhow.workspace = true
+
+[[bin]]
+name = "openedit"
+path = "src/main.rs"

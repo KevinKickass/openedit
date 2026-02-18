@@ -1,0 +1,22 @@
+pub mod buffer;
+pub mod cursor;
+pub mod diff;
+pub mod document;
+pub mod edit;
+pub mod encoding;
+pub mod folding;
+pub mod line_ending;
+pub mod plugin;
+pub mod search;
+pub mod selection;
+pub mod syntax;
+pub mod undo;
+
+pub use buffer::Buffer;
+pub use cursor::{Cursor, Position};
+pub use document::Document;
+pub use encoding::Encoding;
+pub use folding::FoldingState;
+pub use line_ending::LineEnding;
+pub use plugin::{Plugin, PluginManager, PluginAction, PluginContext, PluginCommand, PluginInfo, EditorEvent};
+pub use selection::Selection;

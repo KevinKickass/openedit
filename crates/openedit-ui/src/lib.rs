@@ -1,0 +1,22 @@
+pub mod app;
+pub mod autocomplete;
+pub mod command_palette;
+pub mod config;
+pub mod diff_view;
+pub mod editor_view;
+pub mod find_in_files;
+pub mod function_list;
+pub mod go_to_file;
+pub mod go_to_symbol;
+pub mod gutter;
+pub mod hex_view;
+pub mod macro_recorder;
+pub mod markdown_preview;
+pub mod minimap;
+pub mod search_panel;
+pub mod sidebar;
+pub mod status_bar;
+pub mod tab_bar;
+pub mod theme;
+
+pub use app::OpenEditApp;
