@@ -60,6 +60,18 @@ thiserror = "2"
 log = "0.4"
 env_logger = "0.11"
 
+# LSP
+lsp-types = "0.97"
+
+# Terminal
+portable-pty = "0.8"
+
+# Git
+git2 = "0.19"
+
+# URL handling (for LSP URIs)
+url = "2"
+
 [package]
 name = "openedit"
 version.workspace = true

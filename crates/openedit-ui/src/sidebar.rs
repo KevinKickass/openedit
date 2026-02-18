@@ -1,3 +1,4 @@
+use crate::git::{FileGitStatus, GitManager, git_status_indicator};
 use crate::theme::EditorTheme;
 use egui;
 use std::path::PathBuf;
@@ -135,6 +136,7 @@ pub fn render_sidebar(
     state: &mut SidebarState,
     theme: &EditorTheme,
     _font_size: f32,
+    git_manager: Option<&GitManager>,
 ) -> Option<PathBuf> {
     // Fill background
     let rect = ui.available_rect_before_wrap();
@@ -162,7 +164,7 @@ pub fn render_sidebar(
                 // Render children of root directly (don't show root directory node itself)
                 let children = &mut root.children;
                 for child in children.iter_mut() {
-                    if let Some(path) = render_tree_node(ui, child, 0, theme) {
+                    if let Some(path) = render_tree_node(ui, child, 0, theme, git_manager) {
                         clicked_file = Some(path);
                     }
                 }
@@ -188,6 +190,7 @@ fn render_tree_node(
     node: &mut FileTreeNode,
     depth: usize,
     theme: &EditorTheme,
+    git_manager: Option<&GitManager>,
 ) -> Option<PathBuf> {
     let indent = depth as f32 * 16.0 + 4.0;
     let mut clicked_file = None;
@@ -238,6 +241,19 @@ fn render_tree_node(
             if label_response.clicked() {
                 return Some(node.path.clone());
             }
+
+            // Git status indicator for files
+            if let Some(gm) = git_manager {
+                let status = gm.get_file_status(&node.path);
+                if status != FileGitStatus::Unchanged {
+                    let (label, color) = git_status_indicator(status);
+                    ui.label(
+                        egui::RichText::new(label)
+                            .small()
+                            .color(color),
+                    );
+                }
+            }
         }
 
         None
@@ -250,7 +266,7 @@ fn render_tree_node(
     // Render expanded children
     if node.is_dir && node.expanded {
         for child in &mut node.children {
-            if let Some(path) = render_tree_node(ui, child, depth + 1, theme) {
+            if let Some(path) = render_tree_node(ui, child, depth + 1, theme, git_manager) {
                 clicked_file = Some(path);
             }
         }

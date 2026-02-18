@@ -1,4 +1,7 @@
+use crate::bracket_colors;
+use crate::git::{self, LineDiffStatus};
 use crate::gutter;
+use crate::lsp::{self, LspDiagnostic};
 use crate::macro_recorder::{MacroAction, MacroRecorder};
 use crate::theme::EditorTheme;
 use egui::{self, Pos2, Rect, Ui, Vec2};
@@ -44,6 +47,20 @@ impl Default for EditorViewState {
     }
 }
 
+/// Extra rendering context passed from app to editor view.
+pub struct EditorRenderContext<'a> {
+    /// Line-level git diff statuses for the current file.
+    pub git_line_diffs: &'a [(usize, LineDiffStatus)],
+    /// Git blame info (line -> author string).
+    pub git_blame_info: &'a std::collections::HashMap<usize, String>,
+    /// Whether to show git blame.
+    pub show_blame: bool,
+    /// LSP diagnostics for the current file.
+    pub lsp_diagnostics: &'a [LspDiagnostic],
+    /// Whether bracket colorization is enabled.
+    pub bracket_colorization: bool,
+}
+
 /// Render the editor viewport for a document.
 /// Returns true if the document was modified by user input.
 pub fn render_editor(
@@ -59,6 +76,7 @@ pub fn render_editor(
     autocomplete: &mut crate::autocomplete::AutocompleteState,
     word_wrap: bool,
     macro_rec: &mut MacroRecorder,
+    render_ctx: Option<&EditorRenderContext<'_>>,
 ) -> bool {
     let line_height = line_height_for_font(font_size);
     let char_width = char_width_for_font(font_size);
@@ -332,17 +350,24 @@ pub fn render_editor(
         }
     }
 
-    // Indent guides
-    let indent_guide_color = egui::Color32::from_rgba_premultiplied(
+    // Rainbow indent guide colors
+    const INDENT_COLORS: [egui::Color32; 6] = [
+        egui::Color32::from_rgba_premultiplied(255, 215, 0, 40),    // Gold
+        egui::Color32::from_rgba_premultiplied(218, 112, 214, 40),  // Orchid
+        egui::Color32::from_rgba_premultiplied(0, 191, 255, 40),    // Sky blue
+        egui::Color32::from_rgba_premultiplied(255, 165, 0, 40),    // Orange
+        egui::Color32::from_rgba_premultiplied(50, 205, 50, 40),    // Lime
+        egui::Color32::from_rgba_premultiplied(255, 105, 180, 40),  // Pink
+    ];
+    let indent_guide_line_color = egui::Color32::from_rgba_premultiplied(
         theme.gutter_fg.r(), theme.gutter_fg.g(), theme.gutter_fg.b(), 60,
     );
     let tab_size = 4usize;
     for &(screen_row, vr) in &displayed_vrows {
-        if !vr.is_first { continue; } // only draw guides on first visual row
+        if !vr.is_first { continue; }
         let line = doc.buffer.line(vr.line_idx);
         let line_str = line.to_string();
         let display = line_str.trim_end_matches(&['\n', '\r'][..]);
-        // Count leading spaces
         let indent_chars = display.chars().take_while(|c| *c == ' ').count();
         let indent_levels = indent_chars / tab_size;
         let y = rect.top() + screen_row as f32 * line_height;
@@ -350,9 +375,93 @@ pub fn render_editor(
             let col = level * tab_size;
             let x = text_left + 4.0 + (col as f32 - scroll_col as f32) * char_width;
             if x > text_left && x < rect.right() {
+                // Rainbow indent background band
+                let band_x = text_left + 4.0 + ((level - 1) * tab_size) as f32 * char_width;
+                let band_w = tab_size as f32 * char_width;
+                let band_color = INDENT_COLORS[(level - 1) % INDENT_COLORS.len()];
+                ui.painter().rect_filled(
+                    Rect::from_min_size(Pos2::new(band_x, y), Vec2::new(band_w, line_height)),
+                    0.0,
+                    band_color,
+                );
+                // Vertical guide line
                 ui.painter().line_segment(
                     [Pos2::new(x, y), Pos2::new(x, y + line_height)],
-                    egui::Stroke::new(1.0, indent_guide_color),
+                    egui::Stroke::new(1.0, indent_guide_line_color),
+                );
+            }
+        }
+    }
+
+    // Git gutter marks
+    if let Some(ctx) = render_ctx {
+        if !ctx.git_line_diffs.is_empty() {
+            let gutter_right_x = rect.left() + gutter_width_est;
+            for &(screen_row, vr) in &displayed_vrows {
+                if !vr.is_first { continue; }
+                let y = rect.top() + screen_row as f32 * line_height;
+                git::render_git_gutter_mark(ui, ctx.git_line_diffs, vr.line_idx, gutter_right_x, y, line_height);
+            }
+        }
+
+        // Git blame annotations (right of line text)
+        if ctx.show_blame && !ctx.git_blame_info.is_empty() {
+            let blame_font = egui::FontId::monospace(font_size * 0.85);
+            let blame_color = egui::Color32::from_rgba_premultiplied(120, 120, 120, 160);
+            for &(screen_row, vr) in &displayed_vrows {
+                if !vr.is_first { continue; }
+                if let Some(author) = ctx.git_blame_info.get(&vr.line_idx) {
+                    let y = rect.top() + screen_row as f32 * line_height;
+                    // Place blame text far right
+                    let blame_x = rect.right() - 200.0;
+                    if blame_x > text_left + 100.0 {
+                        let truncated: String = author.chars().take(20).collect();
+                        ui.painter().text(
+                            Pos2::new(blame_x, y),
+                            egui::Align2::LEFT_TOP,
+                            &truncated,
+                            blame_font.clone(),
+                            blame_color,
+                        );
+                    }
+                }
+            }
+        }
+
+        // LSP diagnostic squiggles
+        if !ctx.lsp_diagnostics.is_empty() {
+            for &(screen_row, vr) in &displayed_vrows {
+                if !vr.is_first { continue; }
+                let y = rect.top() + screen_row as f32 * line_height;
+                lsp::render_diagnostic_squiggles(
+                    ui, ctx.lsp_diagnostics, vr.line_idx,
+                    text_left, y, line_height, char_width, scroll_col,
+                );
+            }
+        }
+    }
+
+    // Bracket pair colorization
+    let do_bracket_colors = render_ctx.map_or(false, |c| c.bracket_colorization);
+    if do_bracket_colors {
+        // Collect all lines for bracket depth calculation
+        let all_line_strs: Vec<String> = (0..total_lines)
+            .map(|i| {
+                let l = doc.buffer.line(i).to_string();
+                l.trim_end_matches(&['\n', '\r'][..]).to_string()
+            })
+            .collect();
+        let all_refs: Vec<&str> = all_line_strs.iter().map(|s| s.as_str()).collect();
+        let first_vis = displayed_vrows.first().map(|&(_, vr)| vr.line_idx).unwrap_or(0);
+        let last_vis = displayed_vrows.last().map(|&(_, vr)| vr.line_idx + 1).unwrap_or(0);
+        let colored = bracket_colors::colorize_brackets(&all_refs, first_vis, last_vis);
+        for (line_idx, brackets) in &colored {
+            // Find the screen row for this line
+            if let Some(&(screen_row, _vr)) = displayed_vrows.iter().find(|(_, vr)| vr.line_idx == *line_idx && vr.is_first) {
+                let y = rect.top() + screen_row as f32 * line_height;
+                let line_str = &all_line_strs[*line_idx];
+                bracket_colors::render_bracket_colors(
+                    ui, brackets, text_left, y, char_width, &font_id, scroll_col, line_str,
                 );
             }
         }
@@ -1003,6 +1112,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                                     ctrl, shift, alt,
                                 });
                             }
+                        }
+                        egui::Key::L if ctrl && shift => {
+                            doc.select_all_occurrences();
                         }
                         egui::Key::Escape => {
                             if doc.cursors.cursor_count() > 1 {

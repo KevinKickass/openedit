@@ -107,6 +107,16 @@ pub fn all_commands() -> Vec<Command> {
         // Diff/compare
         Command { id: "view.compare_files", label: "Compare Open Files", shortcut: "" },
         Command { id: "view.close_compare", label: "Close Compare View", shortcut: "" },
+        // Terminal
+        Command { id: "view.toggle_terminal", label: "Toggle Terminal", shortcut: "Ctrl+`" },
+        // Git
+        Command { id: "view.toggle_git_blame", label: "Toggle Git Blame", shortcut: "" },
+        // Bracket colors
+        Command { id: "view.toggle_bracket_colors", label: "Toggle Bracket Pair Colorization", shortcut: "" },
+        // Multi-cursor
+        Command { id: "edit.select_all_occurrences", label: "Select All Occurrences", shortcut: "Ctrl+Shift+L" },
+        // Read-only
+        Command { id: "edit.toggle_read_only", label: "Toggle Read-Only Mode", shortcut: "" },
         // Macro recording
         Command { id: "macro.toggle_recording", label: "Start/Stop Macro Recording", shortcut: "Ctrl+Q" },
         Command { id: "macro.playback", label: "Playback Macro", shortcut: "Ctrl+Shift+Q" },

@@ -21,6 +21,7 @@ pub fn render_status_bar(
     doc: Option<&Document>,
     theme: &EditorTheme,
     macro_recording: bool,
+    git_branch: Option<&str>,
 ) -> (f32, Option<StatusBarAction>) {
     let rect = ui.available_rect_before_wrap();
     let bar_rect = egui::Rect::from_min_size(
@@ -87,6 +88,19 @@ pub fn render_status_bar(
             "READ-ONLY",
             egui::FontId::proportional(12.0),
             egui::Color32::from_rgb(255, 180, 50),
+        );
+    }
+
+    // Git branch indicator
+    if let Some(branch) = git_branch {
+        let git_x = bar_rect.left() + if doc.read_only { 440.0 } else if macro_recording { 390.0 } else { 340.0 };
+        let branch_text = format!("⎇ {}", branch);
+        ui.painter().text(
+            egui::Pos2::new(git_x, bar_rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            &branch_text,
+            egui::FontId::proportional(12.0),
+            theme.status_bar_fg,
         );
     }
 

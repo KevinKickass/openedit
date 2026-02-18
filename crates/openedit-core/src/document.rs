@@ -955,6 +955,55 @@ impl Document {
         }
     }
 
+    /// Select all occurrences of the current selection (Ctrl+Shift+L).
+    pub fn select_all_occurrences(&mut self) {
+        let primary = self.cursors.primary();
+        if !primary.has_selection() {
+            // Select word under cursor first
+            self.select_next_occurrence();
+            if !self.cursors.primary().has_selection() {
+                return;
+            }
+        }
+
+        let selected = self.selected_text();
+        if selected.is_empty() {
+            return;
+        }
+
+        let text = self.buffer.to_string();
+        let mut search_start = 0;
+
+        // Clear extra cursors, keep primary
+        self.cursors.clear_extra_cursors();
+
+        // Find all occurrences
+        while let Some(byte_offset) = text[search_start..].find(&selected) {
+            let abs_byte_offset = search_start + byte_offset;
+            let char_start = text[..abs_byte_offset].chars().count();
+            let char_end = char_start + selected.chars().count();
+
+            let (start_line, start_col) = self.buffer.char_to_line_col(char_start);
+            let (end_line, end_col) = self.buffer.char_to_line_col(char_end);
+
+            // Check if this is already the primary cursor's selection
+            let primary = self.cursors.primary();
+            let is_primary = if let Some((s, e)) = primary.selection_range() {
+                s == Position::new(start_line, start_col) && e == Position::new(end_line, end_col)
+            } else {
+                false
+            };
+
+            if !is_primary {
+                let mut new_cursor = Cursor::new(end_line, end_col);
+                new_cursor.anchor = Some(Position::new(start_line, start_col));
+                self.cursors.add_cursor(new_cursor);
+            }
+
+            search_start = abs_byte_offset + selected.len();
+        }
+    }
+
     // --- Undo/Redo ---
 
     pub fn undo(&mut self) {

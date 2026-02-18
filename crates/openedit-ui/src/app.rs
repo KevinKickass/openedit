@@ -2,17 +2,21 @@ use crate::autocomplete::AutocompleteState;
 use crate::command_palette::{self, CommandPaletteState};
 use crate::config::{self, EditorConfig};
 use crate::diff_view::{self, DiffViewState};
-use crate::editor_view::{self, EditorViewState};
+use crate::editor_view::{self, EditorRenderContext, EditorViewState};
 use crate::find_in_files::FindInFilesState;
 use crate::function_list::{self, FunctionListState};
+use crate::git::GitManager;
 use crate::go_to_file::{self, GoToFileState};
 use crate::go_to_symbol::{self, GoToSymbolState};
 use crate::hex_view::{self, HexViewState};
+use crate::lsp::LspManager;
+use url::Url;
 use crate::macro_recorder::{MacroAction, MacroRecorder};
 use crate::search_panel::{self, SearchPanelState};
 use crate::sidebar::{self, SidebarState};
 use crate::status_bar;
 use crate::tab_bar;
+use crate::terminal::TerminalState;
 use crate::theme::EditorTheme;
 use eframe::egui;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
@@ -92,6 +96,29 @@ pub struct OpenEditApp {
     column_editor_initial: String,
     column_editor_step: String,
     column_editor_pad_width: String,
+    /// LSP manager for code intelligence.
+    lsp_manager: LspManager,
+    /// Integrated terminal state.
+    terminal_state: TerminalState,
+    /// Git integration state.
+    git_state: GitManager,
+    /// Current git branch name.
+    git_branch: Option<String>,
+    /// Whether bracket pair colorization is enabled.
+    bracket_colorization: bool,
+    /// LSP completion items (separate from word-based autocomplete).
+    lsp_completions: Vec<crate::lsp::LspCompletionItem>,
+    lsp_completion_selected: usize,
+    lsp_completions_visible: bool,
+    /// Hover tooltip state.
+    hover_text: Option<String>,
+    hover_pos: Option<egui::Pos2>,
+    /// Track which files have been opened in LSP.
+    lsp_opened_files: HashSet<String>,
+    /// Debounce timer for LSP didChange.
+    lsp_change_timer: Option<std::time::Instant>,
+    /// Track if terminal has focus for keyboard input.
+    terminal_focused: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -200,6 +227,19 @@ impl OpenEditApp {
             column_editor_initial: "1".to_string(),
             column_editor_step: "1".to_string(),
             column_editor_pad_width: "0".to_string(),
+            lsp_manager: LspManager::new(),
+            terminal_state: TerminalState::default(),
+            git_state: GitManager::new(),
+            git_branch: None,
+            bracket_colorization: true,
+            lsp_completions: Vec::new(),
+            lsp_completion_selected: 0,
+            lsp_completions_visible: false,
+            hover_text: None,
+            hover_pos: None,
+            lsp_opened_files: HashSet::new(),
+            lsp_change_timer: None,
+            terminal_focused: false,
         };
 
         // If no files specified, try to restore session; otherwise open untitled doc
@@ -234,8 +274,18 @@ impl OpenEditApp {
 
                         // Add to recent files
                         self.recent_files.retain(|p| p != &path);
-                        self.recent_files.insert(0, path);
+                        self.recent_files.insert(0, path.clone());
                         self.recent_files.truncate(20);
+
+                        // Initialize git if not already done
+                        if self.git_branch.is_none() {
+                            if let Some(parent) = path.parent() {
+                {
+                                    self.git_state.init(parent);
+                                    self.git_branch = self.git_state.branch.clone();
+                                }
+                            }
+                        }
 
                         self.save_session();
                     }
@@ -368,6 +418,9 @@ impl OpenEditApp {
                     doc.modified = false;
                     log::info!("Saved {}", path.display());
                     self.save_session();
+                    // Refresh git status after save
+                    self.git_state.refresh_statuses();
+                    self.git_state.invalidate_file_cache();
                 }
                 Err(e) => {
                     log::error!("Failed to save {}: {}", path.display(), e);
@@ -872,6 +925,36 @@ impl OpenEditApp {
             "view.close_compare" => {
                 self.diff_state.active = false;
             }
+            "view.toggle_terminal" => {
+                if !self.terminal_state.visible {
+                    self.terminal_state.visible = true;
+                    if !self.terminal_state.running {
+                        self.terminal_state.start();
+                    }
+                    self.terminal_focused = true;
+                } else {
+                    self.terminal_state.visible = false;
+                    self.terminal_focused = false;
+                }
+            }
+            "view.toggle_bracket_colors" => {
+                self.bracket_colorization = !self.bracket_colorization;
+            }
+            "view.toggle_git_blame" => {
+                self.git_state.show_blame = !self.git_state.show_blame;
+                if self.git_state.show_blame {
+                    if let Some(doc) = self.documents.get(self.active_tab) {
+                        if let Some(ref path) = doc.path {
+                            self.git_state.compute_blame(path);
+                        }
+                    }
+                }
+            }
+            "edit.select_all_occurrences" => {
+                if let Some(doc) = self.documents.get_mut(self.active_tab) {
+                    doc.select_all_occurrences();
+                }
+            }
             "view.toggle_function_list" => {
                 self.function_list_state.visible = !self.function_list_state.visible;
                 if self.function_list_state.visible {
@@ -947,6 +1030,80 @@ impl OpenEditApp {
 
 impl eframe::App for OpenEditApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Poll LSP events
+        self.lsp_manager.poll_events();
+
+        // Check for LSP completions
+        if let Some(items) = self.lsp_manager.take_completions() {
+            if !items.is_empty() {
+                self.lsp_completions = items;
+                self.lsp_completion_selected = 0;
+                self.lsp_completions_visible = true;
+            }
+        }
+        if let Some(hover) = self.lsp_manager.take_hover() {
+            self.hover_text = Some(hover);
+        }
+        if let Some(loc) = self.lsp_manager.take_definition() {
+            // Navigate to definition
+            if let Ok(url) = Url::parse(&loc.uri) {
+                if let Ok(path) = url.to_file_path() {
+                    let existing = self.documents.iter().position(|d| d.path.as_ref() == Some(&path));
+                    if let Some(tab_idx) = existing {
+                        self.active_tab = tab_idx;
+                    } else {
+                        self.open_file(path);
+                    }
+                    if let Some(doc) = self.documents.get_mut(self.active_tab) {
+                        doc.go_to_line(loc.line);
+                    }
+                }
+            }
+        }
+
+        // Periodic git refresh
+        self.git_state.maybe_refresh();
+
+        // LSP: ensure server running and file opened for current doc
+        if let Some(doc) = self.documents.get(self.active_tab) {
+            if let Some(ref lang) = doc.language {
+                let root = self.workspace_root();
+                self.lsp_manager.ensure_server(lang, &root);
+
+                if let Some(ref path) = doc.path {
+                    let uri = Url::from_file_path(path)
+                        .map(|u| u.to_string())
+                        .unwrap_or_default();
+                    if !self.lsp_opened_files.contains(&uri) {
+                        let text = doc.buffer.to_string();
+                        self.lsp_manager.did_open(lang, &uri, &text);
+                        self.lsp_opened_files.insert(uri);
+                    }
+                }
+            }
+
+            // Git: compute line diff for current file
+            if let Some(ref path) = doc.path {
+                self.git_state.compute_line_diff(path);
+            }
+        }
+
+        // LSP debounced didChange
+        if let Some(timer) = self.lsp_change_timer {
+            if timer.elapsed() > std::time::Duration::from_millis(300) {
+                self.lsp_change_timer = None;
+                if let Some(doc) = self.documents.get(self.active_tab) {
+                    if let (Some(ref lang), Some(ref path)) = (&doc.language, &doc.path) {
+                        let uri = Url::from_file_path(path)
+                            .map(|u| u.to_string())
+                            .unwrap_or_default();
+                        let text = doc.buffer.to_string();
+                        self.lsp_manager.did_change(lang, &uri, &text);
+                    }
+                }
+            }
+        }
+
         // Process pending file opens
         let pending: Vec<PathBuf> = std::mem::take(&mut self.pending_opens);
         for path in pending {
@@ -1005,6 +1162,8 @@ impl eframe::App for OpenEditApp {
         let mut toggle_md_preview = false;
         let mut toggle_macro_recording = false;
         let mut playback_macro = false;
+        let mut toggle_terminal = false;
+        let mut select_all_occurrences = false;
 
         ctx.input(|input| {
             let ctrl = input.modifiers.ctrl || input.modifiers.mac_cmd;
@@ -1015,6 +1174,8 @@ impl eframe::App for OpenEditApp {
                     match key {
                         egui::Key::Q if ctrl && shift => playback_macro = true,
                         egui::Key::Q if ctrl => toggle_macro_recording = true,
+                        egui::Key::L if ctrl && shift => select_all_occurrences = true,
+                        egui::Key::Backtick if ctrl => toggle_terminal = true,
                         egui::Key::O if ctrl && shift => toggle_go_to_symbol = true,
                         egui::Key::O if ctrl => open_file = true,
                         egui::Key::S if ctrl && shift => save_as = true,
@@ -1186,6 +1347,22 @@ impl eframe::App for OpenEditApp {
                 self.replay_macro();
             }
         }
+        if toggle_terminal {
+            if !self.terminal_state.visible {
+                self.terminal_state.visible = true;
+                if !self.terminal_state.running {
+                    self.terminal_state.start();
+                }
+                self.terminal_focused = true;
+            } else {
+                self.terminal_focused = !self.terminal_focused;
+            }
+        }
+        if select_all_occurrences {
+            if let Some(doc) = self.documents.get_mut(self.active_tab) {
+                doc.select_all_occurrences();
+            }
+        }
 
         // Build tab data
         let tabs: Vec<(String, bool, Option<String>)> = self
@@ -1296,6 +1473,7 @@ impl eframe::App for OpenEditApp {
                         &mut self.sidebar_state,
                         &self.theme,
                         self.font_size,
+                        Some(&self.git_state),
                     );
                 }
 
@@ -1375,13 +1553,19 @@ impl eframe::App for OpenEditApp {
                 let status_bar_height = 24.0;
                 let content_height = available.height() - status_bar_height;
 
-                // Split between editor and find-in-files panel
-                let find_panel_height = if show_find_in_files {
-                    (content_height * 0.30).max(150.0).min(content_height - 100.0)
+                // Split between editor, find-in-files panel, and terminal
+                let terminal_height = if self.terminal_state.visible {
+                    (content_height * self.terminal_state.height_fraction).max(80.0).min(content_height - 100.0)
                 } else {
                     0.0
                 };
-                let editor_height = content_height - find_panel_height;
+                let remaining_height = content_height - terminal_height;
+                let find_panel_height = if show_find_in_files {
+                    (remaining_height * 0.30).max(150.0).min(remaining_height - 100.0)
+                } else {
+                    0.0
+                };
+                let editor_height = remaining_height - find_panel_height;
 
                 let editor_rect = egui::Rect::from_min_size(
                     available.left_top(),
@@ -1392,6 +1576,25 @@ impl eframe::App for OpenEditApp {
                 let split_active = self.split.active;
                 let split_dir = self.split.direction;
                 let second_tab = self.split.second_tab.min(self.documents.len().saturating_sub(1));
+
+                // Build render context for editor (git + LSP + bracket colors)
+                let empty_diffs: Vec<(usize, crate::git::LineDiffStatus)> = Vec::new();
+                let empty_blame: std::collections::HashMap<usize, String> = std::collections::HashMap::new();
+                let empty_diags: Vec<crate::lsp::LspDiagnostic> = Vec::new();
+                let cur_path = self.documents.get(self.active_tab).and_then(|d| d.path.clone());
+                let git_line_diffs = cur_path.as_ref()
+                    .map(|p| self.git_state.get_line_diffs(p).to_vec())
+                    .unwrap_or_default();
+                let lsp_diagnostics = cur_path.as_ref()
+                    .map(|p| self.lsp_manager.get_diagnostics(p).to_vec())
+                    .unwrap_or_default();
+                let render_context = EditorRenderContext {
+                    git_line_diffs: if git_line_diffs.is_empty() { &empty_diffs } else { &git_line_diffs },
+                    git_blame_info: if self.git_state.show_blame { &self.git_state.blame_info } else { &empty_blame },
+                    show_blame: self.git_state.show_blame,
+                    lsp_diagnostics: if lsp_diagnostics.is_empty() { &empty_diags } else { &lsp_diagnostics },
+                    bracket_colorization: self.bracket_colorization,
+                };
 
                 if self.diff_state.active {
                     // Diff/compare view replaces the normal editor
@@ -1475,7 +1678,7 @@ impl eframe::App for OpenEditApp {
                                 .layout(egui::Layout::top_down(egui::Align::LEFT)),
                         );
                         if let Some(doc) = self.documents.get_mut(self.active_tab) {
-                            editor_view::render_editor(&mut pane1_ui, doc, &self.theme, show_search, &mut self.editor_view_state, &mut self.syntax_engine, self.font_size, self.show_whitespace, self.show_minimap, &mut self.autocomplete, self.word_wrap, &mut self.macro_recorder);
+                            editor_view::render_editor(&mut pane1_ui, doc, &self.theme, show_search, &mut self.editor_view_state, &mut self.syntax_engine, self.font_size, self.show_whitespace, self.show_minimap, &mut self.autocomplete, self.word_wrap, &mut self.macro_recorder, Some(&render_context));
                         }
                     }
 
@@ -1486,7 +1689,7 @@ impl eframe::App for OpenEditApp {
                                 .layout(egui::Layout::top_down(egui::Align::LEFT)),
                         );
                         if let Some(doc) = self.documents.get_mut(second_tab) {
-                            editor_view::render_editor(&mut pane2_ui, doc, &self.theme, false, &mut self.split.second_view_state, &mut self.syntax_engine, self.font_size, self.show_whitespace, self.show_minimap, &mut self.split.second_autocomplete, self.word_wrap, &mut self.macro_recorder);
+                            editor_view::render_editor(&mut pane2_ui, doc, &self.theme, false, &mut self.split.second_view_state, &mut self.syntax_engine, self.font_size, self.show_whitespace, self.show_minimap, &mut self.split.second_autocomplete, self.word_wrap, &mut self.macro_recorder, Some(&render_context));
                         }
                     }
                 } else if self.show_markdown_preview {
@@ -1515,7 +1718,7 @@ impl eframe::App for OpenEditApp {
                     let source_for_preview;
                     if let Some(doc) = self.documents.get_mut(self.active_tab) {
                         source_for_preview = doc.buffer.to_string();
-                        editor_view::render_editor(&mut editor_ui, doc, &self.theme, show_search, &mut self.editor_view_state, &mut self.syntax_engine, self.font_size, self.show_whitespace, self.show_minimap, &mut self.autocomplete, self.word_wrap, &mut self.macro_recorder);
+                        editor_view::render_editor(&mut editor_ui, doc, &self.theme, show_search, &mut self.editor_view_state, &mut self.syntax_engine, self.font_size, self.show_whitespace, self.show_minimap, &mut self.autocomplete, self.word_wrap, &mut self.macro_recorder, Some(&render_context));
                     } else {
                         source_for_preview = String::new();
                     }
@@ -1532,7 +1735,57 @@ impl eframe::App for OpenEditApp {
                     // Single editor pane
                     let mut editor_ui = main_ui.new_child(egui::UiBuilder::new().max_rect(editor_rect).layout(egui::Layout::top_down(egui::Align::LEFT)));
                     if let Some(doc) = self.documents.get_mut(self.active_tab) {
-                        editor_view::render_editor(&mut editor_ui, doc, &self.theme, show_search, &mut self.editor_view_state, &mut self.syntax_engine, self.font_size, self.show_whitespace, self.show_minimap, &mut self.autocomplete, self.word_wrap, &mut self.macro_recorder);
+                        let was_modified = editor_view::render_editor(&mut editor_ui, doc, &self.theme, show_search, &mut self.editor_view_state, &mut self.syntax_engine, self.font_size, self.show_whitespace, self.show_minimap, &mut self.autocomplete, self.word_wrap, &mut self.macro_recorder, Some(&render_context));
+                        if was_modified {
+                            // Trigger debounced LSP didChange and request completions
+                            self.lsp_change_timer = Some(std::time::Instant::now());
+                            if let (Some(ref lang), Some(ref path)) = (&doc.language, &doc.path) {
+                                let uri = url::Url::from_file_path(path)
+                                    .map(|u| u.to_string())
+                                    .unwrap_or_default();
+                                let cursor = doc.cursors.primary().position;
+                                self.lsp_manager.request_completion(lang, &uri, cursor.line as u32, cursor.col as u32);
+                            }
+                        }
+                    }
+                }
+
+                // LSP hover tooltip
+                if let Some(ref hover_text) = self.hover_text {
+                    if let Some(pos) = self.hover_pos {
+                        let mut hover_ui = main_ui.new_child(
+                            egui::UiBuilder::new().max_rect(editor_rect)
+                                .layout(egui::Layout::top_down(egui::Align::LEFT)),
+                        );
+                        crate::lsp::render_hover_tooltip(&mut hover_ui, hover_text, pos);
+                    }
+                }
+
+                // LSP autocomplete popup (when visible, overlays on the editor)
+                if self.lsp_completions_visible && !self.lsp_completions.is_empty() {
+                    if let Some(doc) = self.documents.get(self.active_tab) {
+                        let cpos = doc.cursors.primary().position;
+                        let char_w = crate::editor_view::char_width_for_font(self.font_size);
+                        let line_h = crate::editor_view::line_height_for_font(self.font_size);
+                        // Approximate cursor screen position
+                        let digit_count = format!("{}", doc.buffer.len_lines()).len().max(3);
+                        let gutter_w = (digit_count as f32 + 2.0) * char_w + char_w * 1.5 + 8.0;
+                        let visible_line = cpos.line.saturating_sub(doc.scroll_line);
+                        let cursor_screen = egui::Pos2::new(
+                            editor_rect.left() + gutter_w + 4.0 + cpos.col as f32 * char_w,
+                            editor_rect.top() + visible_line as f32 * line_h,
+                        );
+                        let mut lsp_ui = main_ui.new_child(
+                            egui::UiBuilder::new().max_rect(editor_rect)
+                                .layout(egui::Layout::top_down(egui::Align::LEFT)),
+                        );
+                        crate::lsp::render_lsp_autocomplete(
+                            &mut lsp_ui,
+                            &self.lsp_completions,
+                            self.lsp_completion_selected,
+                            cursor_screen,
+                            line_h,
+                        );
                     }
                 }
 
@@ -1549,6 +1802,25 @@ impl eframe::App for OpenEditApp {
                         &mut find_ui,
                         &mut self.find_in_files_state,
                     );
+                }
+
+                // Terminal panel
+                if self.terminal_state.visible {
+                    let terminal_top = available.top() + editor_height + find_panel_height;
+                    let terminal_rect = egui::Rect::from_min_size(
+                        egui::Pos2::new(available.left(), terminal_top),
+                        egui::Vec2::new(available.width(), terminal_height),
+                    );
+                    let mut terminal_ui = main_ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(terminal_rect)
+                            .layout(egui::Layout::top_down(egui::Align::LEFT)),
+                    );
+                    crate::terminal::render_terminal(&mut terminal_ui, &mut self.terminal_state, self.font_size);
+
+                    if self.terminal_focused {
+                        crate::terminal::handle_terminal_input(&mut terminal_ui, &mut self.terminal_state);
+                    }
                 }
 
                 // Handle navigation from find-in-files result click
@@ -1571,7 +1843,8 @@ impl eframe::App for OpenEditApp {
 
                 // Status bar (spans full width across sidebar + editor)
                 let doc_ref = self.documents.get(self.active_tab);
-                let (_, sb_action) = status_bar::render_status_bar(&mut main_ui, doc_ref, &self.theme, self.macro_recorder.is_recording());
+                let git_branch = self.git_state.branch.as_deref();
+                let (_, sb_action) = status_bar::render_status_bar(&mut main_ui, doc_ref, &self.theme, self.macro_recorder.is_recording(), git_branch);
 
                 // Handle status bar actions
                 if let Some(action) = sb_action {
