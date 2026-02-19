@@ -18,9 +18,11 @@ pub mod markdown_preview;
 pub mod minimap;
 pub mod search_panel;
 pub mod sidebar;
+pub mod snippets;
 pub mod status_bar;
 pub mod tab_bar;
 pub mod terminal;
 pub mod theme;
+pub mod vim;
 
 pub use app::OpenEditApp;

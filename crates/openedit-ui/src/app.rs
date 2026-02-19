@@ -14,10 +14,12 @@ use url::Url;
 use crate::macro_recorder::{MacroAction, MacroRecorder};
 use crate::search_panel::{self, SearchPanelState};
 use crate::sidebar::{self, SidebarState};
+use crate::snippets::SnippetEngine;
 use crate::status_bar;
 use crate::tab_bar;
 use crate::terminal::TerminalState;
 use crate::theme::EditorTheme;
+use crate::vim::VimState;
 use eframe::egui;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use openedit_core::syntax::SyntaxEngine;
@@ -119,6 +121,15 @@ pub struct OpenEditApp {
     lsp_change_timer: Option<std::time::Instant>,
     /// Track if terminal has focus for keyboard input.
     terminal_focused: bool,
+    /// Vim mode state.
+    vim_state: VimState,
+    /// Snippet engine.
+    snippet_engine: SnippetEngine,
+    /// Zen mode (distraction-free).
+    zen_mode: bool,
+    /// Split divider drag state.
+    split_ratio: f32,
+    split_dragging: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -175,11 +186,7 @@ impl OpenEditApp {
 
         // Load persistent configuration
         let cfg = config::load_config();
-        let theme = if cfg.ui.theme == "light" {
-            EditorTheme::light()
-        } else {
-            EditorTheme::dark()
-        };
+        let theme = EditorTheme::by_name(&cfg.ui.theme);
 
         let mut sidebar_state = SidebarState::default();
         sidebar_state.visible = cfg.ui.show_sidebar;
@@ -240,6 +247,11 @@ impl OpenEditApp {
             lsp_opened_files: HashSet::new(),
             lsp_change_timer: None,
             terminal_focused: false,
+            vim_state: VimState::new(),
+            snippet_engine: SnippetEngine::new(),
+            zen_mode: false,
+            split_ratio: 0.5,
+            split_dragging: false,
         };
 
         // If no files specified, try to restore session; otherwise open untitled doc
@@ -336,10 +348,24 @@ impl OpenEditApp {
             .map(|p| p.to_string_lossy().into_owned())
             .collect();
 
+        let tab_states: Vec<serde_json::Value> = self.documents.iter().map(|d| {
+            serde_json::json!({
+                "cursor_line": d.cursors.primary().position.line,
+                "cursor_col": d.cursors.primary().position.col,
+                "scroll_line": d.scroll_line,
+                "scroll_col": d.scroll_col,
+            })
+        }).collect();
+
         let session = serde_json::json!({
             "files": open_files,
             "active_tab": self.active_tab,
             "recent_files": recent,
+            "tab_states": tab_states,
+            "split_active": self.split.active,
+            "split_direction": if self.split.direction == SplitDirection::Horizontal { "horizontal" } else { "vertical" },
+            "split_second_tab": self.split.second_tab,
+            "split_ratio": self.split_ratio,
         });
 
         if let Some(parent) = path.parent() {
@@ -375,10 +401,54 @@ impl OpenEditApp {
             }
         }
 
+        // Restore cursor positions and scroll
+        if let Some(tab_states) = session["tab_states"].as_array() {
+            for (i, state) in tab_states.iter().enumerate() {
+                if let Some(doc) = self.documents.get_mut(i) {
+                    if let Some(line) = state["cursor_line"].as_u64() {
+                        if let Some(col) = state["cursor_col"].as_u64() {
+                            let line = line as usize;
+                            let col = col as usize;
+                            let max_line = doc.buffer.len_lines().saturating_sub(1);
+                            let target_line = line.min(max_line);
+                            let max_col = doc.buffer.line_len_chars_no_newline(target_line);
+                            let target_col = col.min(max_col);
+                            doc.cursors.primary_mut().move_to(
+                                openedit_core::cursor::Position::new(target_line, target_col),
+                                false,
+                            );
+                        }
+                    }
+                    if let Some(sl) = state["scroll_line"].as_u64() {
+                        doc.scroll_line = sl as usize;
+                    }
+                    if let Some(sc) = state["scroll_col"].as_u64() {
+                        doc.scroll_col = sc as usize;
+                    }
+                }
+            }
+        }
+
         if let Some(tab) = session["active_tab"].as_u64() {
             let tab = tab as usize;
             if tab < self.documents.len() {
                 self.active_tab = tab;
+            }
+        }
+
+        // Restore split layout
+        if let Some(true) = session["split_active"].as_bool() {
+            self.split.active = true;
+            if session["split_direction"].as_str() == Some("vertical") {
+                self.split.direction = SplitDirection::Vertical;
+            } else {
+                self.split.direction = SplitDirection::Horizontal;
+            }
+            if let Some(st) = session["split_second_tab"].as_u64() {
+                self.split.second_tab = (st as usize).min(self.documents.len().saturating_sub(1));
+            }
+            if let Some(sr) = session["split_ratio"].as_f64() {
+                self.split_ratio = sr as f32;
             }
         }
 
@@ -822,12 +892,28 @@ impl OpenEditApp {
                 self.save_config_state();
             }
             "view.toggle_theme" => {
-                // Toggle between dark and light
-                if self.theme.background == egui::Color32::from_rgb(30, 30, 30) {
-                    self.theme = EditorTheme::light();
-                } else {
-                    self.theme = EditorTheme::dark();
+                // Cycle through themes
+                let names = EditorTheme::all_names();
+                let current_idx = names.iter().position(|n| *n == self.theme.name).unwrap_or(0);
+                let next_idx = (current_idx + 1) % names.len();
+                self.theme = EditorTheme::by_name(names[next_idx]);
+                self.save_config_state();
+            }
+            "view.zen_mode" | "view.toggle_zen" => {
+                self.zen_mode = !self.zen_mode;
+                if self.zen_mode {
+                    self.sidebar_state.visible = false;
                 }
+            }
+            "edit.toggle_vim_mode" => {
+                self.vim_state.enabled = !self.vim_state.enabled;
+                if self.vim_state.enabled {
+                    self.vim_state.mode = crate::vim::VimMode::Normal;
+                }
+            }
+            cmd if cmd.starts_with("view.theme.") => {
+                let theme_key = &cmd["view.theme.".len()..];
+                self.theme = EditorTheme::by_name(theme_key);
                 self.save_config_state();
             }
             "view.split_horizontal" => {
@@ -1002,11 +1088,7 @@ impl OpenEditApp {
 
     /// Build an `EditorConfig` from the current app state.
     fn current_config(&self) -> EditorConfig {
-        let theme_name = if self.theme.background == egui::Color32::from_rgb(30, 30, 30) {
-            "dark"
-        } else {
-            "light"
-        };
+        let theme_name = self.theme.config_name();
         EditorConfig {
             editor: config::EditorSection {
                 font_size: self.font_size,
@@ -1164,6 +1246,8 @@ impl eframe::App for OpenEditApp {
         let mut playback_macro = false;
         let mut toggle_terminal = false;
         let mut select_all_occurrences = false;
+        let mut toggle_zen = false;
+        let mut toggle_split = false;
 
         ctx.input(|input| {
             let ctrl = input.modifiers.ctrl || input.modifiers.mac_cmd;
@@ -1172,6 +1256,8 @@ impl eframe::App for OpenEditApp {
             for event in &input.events {
                 if let egui::Event::Key { key, pressed: true, .. } = event {
                     match key {
+                        egui::Key::F11 => toggle_zen = true,
+                        egui::Key::Backslash if ctrl => toggle_split = true,
                         egui::Key::Q if ctrl && shift => playback_macro = true,
                         egui::Key::Q if ctrl => toggle_macro_recording = true,
                         egui::Key::L if ctrl && shift => select_all_occurrences = true,
@@ -1363,6 +1449,21 @@ impl eframe::App for OpenEditApp {
                 doc.select_all_occurrences();
             }
         }
+        if toggle_zen {
+            self.zen_mode = !self.zen_mode;
+            if self.zen_mode {
+                self.sidebar_state.visible = false;
+            }
+        }
+        if toggle_split {
+            if self.split.active {
+                self.split.active = false;
+            } else {
+                self.split.active = true;
+                self.split.direction = SplitDirection::Horizontal;
+                self.split.second_tab = self.active_tab;
+            }
+        }
 
         // Build tab data
         let tabs: Vec<(String, bool, Option<String>)> = self
@@ -1375,6 +1476,67 @@ impl eframe::App for OpenEditApp {
         egui::CentralPanel::default()
             .frame(egui::Frame::none().fill(self.theme.background))
             .show(ctx, |ui| {
+                // In zen mode, skip tab bar, sidebar, status bar
+                if self.zen_mode {
+                    // Centered editor only
+                    let rect = ui.available_rect_before_wrap();
+                    let max_text_width = 800.0_f32;
+                    let margin = ((rect.width() - max_text_width) / 2.0).max(0.0);
+                    let zen_rect = egui::Rect::from_min_size(
+                        egui::Pos2::new(rect.left() + margin, rect.top()),
+                        egui::Vec2::new(rect.width() - margin * 2.0, rect.height()),
+                    );
+                    let mut zen_ui = ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(zen_rect)
+                            .layout(egui::Layout::top_down(egui::Align::LEFT)),
+                    );
+
+                    let empty_diffs: Vec<(usize, crate::git::LineDiffStatus)> = Vec::new();
+                    let empty_blame: std::collections::HashMap<usize, String> = std::collections::HashMap::new();
+                    let empty_diags: Vec<crate::lsp::LspDiagnostic> = Vec::new();
+                    let render_context = EditorRenderContext {
+                        git_line_diffs: &empty_diffs,
+                        git_blame_info: &empty_blame,
+                        show_blame: false,
+                        lsp_diagnostics: &empty_diags,
+                        bracket_colorization: self.bracket_colorization,
+                    };
+
+                    if let Some(doc) = self.documents.get_mut(self.active_tab) {
+                        editor_view::render_editor(
+                            &mut zen_ui, doc, &self.theme, false,
+                            &mut self.editor_view_state, &mut self.syntax_engine,
+                            self.font_size, self.show_whitespace, false,
+                            &mut self.autocomplete, self.word_wrap,
+                            &mut self.macro_recorder, Some(&render_context),
+                        );
+                    }
+
+                    // Vim mode indicator in zen mode
+                    if self.vim_state.enabled {
+                        let mode_text = format!("-- {} --", self.vim_state.mode);
+                        let text_pos = egui::Pos2::new(rect.center().x, rect.bottom() - 30.0);
+                        ui.painter().text(
+                            text_pos,
+                            egui::Align2::CENTER_TOP,
+                            &mode_text,
+                            egui::FontId::monospace(14.0),
+                            self.theme.status_bar_fg,
+                        );
+                    }
+
+                    // Command palette still works in zen mode
+                    if self.command_palette.open {
+                        if let Some(cmd_id) = command_palette::render_command_palette(ctx, &mut self.command_palette) {
+                            self.execute_command(cmd_id);
+                        }
+                    }
+
+                    ctx.request_repaint_after(std::time::Duration::from_millis(500));
+                    return;
+                }
+
                 // Tab bar
                 let tab_response = tab_bar::render_tab_bar(ui, &tabs, self.active_tab, &self.theme);
 
@@ -1628,45 +1790,74 @@ impl eframe::App for OpenEditApp {
                     let mut editor_ui = main_ui.new_child(egui::UiBuilder::new().max_rect(editor_rect).layout(egui::Layout::top_down(egui::Align::LEFT)));
                     hex_view::render_hex_view(&mut editor_ui, &mut self.hex_view_state, &self.theme, self.font_size);
                 } else if split_active && !self.documents.is_empty() {
-                    // Compute the two sub-rects
-                    let (pane1_rect, pane2_rect) = if split_dir == SplitDirection::Horizontal {
-                        let half_w = editor_rect.width() / 2.0;
-                        let sep = 2.0; // separator width
+                    let ratio = self.split_ratio.clamp(0.15, 0.85);
+                    // Compute the two sub-rects with draggable divider
+                    let (pane1_rect, pane2_rect, divider_rect) = if split_dir == SplitDirection::Horizontal {
+                        let sep = 6.0;
+                        let first_w = (editor_rect.width() - sep) * ratio;
                         let r1 = egui::Rect::from_min_size(
                             editor_rect.left_top(),
-                            egui::Vec2::new(half_w - sep / 2.0, editor_rect.height()),
+                            egui::Vec2::new(first_w, editor_rect.height()),
+                        );
+                        let div = egui::Rect::from_min_size(
+                            egui::Pos2::new(editor_rect.left() + first_w, editor_rect.top()),
+                            egui::Vec2::new(sep, editor_rect.height()),
                         );
                         let r2 = egui::Rect::from_min_size(
-                            egui::Pos2::new(editor_rect.left() + half_w + sep / 2.0, editor_rect.top()),
-                            egui::Vec2::new(half_w - sep / 2.0, editor_rect.height()),
+                            egui::Pos2::new(editor_rect.left() + first_w + sep, editor_rect.top()),
+                            egui::Vec2::new(editor_rect.width() - first_w - sep, editor_rect.height()),
                         );
-                        (r1, r2)
+                        (r1, r2, div)
                     } else {
-                        let half_h = editor_rect.height() / 2.0;
-                        let sep = 2.0;
+                        let sep = 6.0;
+                        let first_h = (editor_rect.height() - sep) * ratio;
                         let r1 = egui::Rect::from_min_size(
                             editor_rect.left_top(),
-                            egui::Vec2::new(editor_rect.width(), half_h - sep / 2.0),
+                            egui::Vec2::new(editor_rect.width(), first_h),
+                        );
+                        let div = egui::Rect::from_min_size(
+                            egui::Pos2::new(editor_rect.left(), editor_rect.top() + first_h),
+                            egui::Vec2::new(editor_rect.width(), sep),
                         );
                         let r2 = egui::Rect::from_min_size(
-                            egui::Pos2::new(editor_rect.left(), editor_rect.top() + half_h + sep / 2.0),
-                            egui::Vec2::new(editor_rect.width(), half_h - sep / 2.0),
+                            egui::Pos2::new(editor_rect.left(), editor_rect.top() + first_h + sep),
+                            egui::Vec2::new(editor_rect.width(), editor_rect.height() - first_h - sep),
                         );
-                        (r1, r2)
+                        (r1, r2, div)
                     };
 
-                    // Draw separator line
+                    // Handle divider drag
+                    let divider_response = main_ui.interact(divider_rect, main_ui.id().with("split_divider"), egui::Sense::drag());
+                    if divider_response.hovered() {
+                        ctx.set_cursor_icon(if split_dir == SplitDirection::Horizontal {
+                            egui::CursorIcon::ResizeHorizontal
+                        } else {
+                            egui::CursorIcon::ResizeVertical
+                        });
+                    }
+                    if divider_response.dragged() {
+                        if let Some(pos) = divider_response.interact_pointer_pos() {
+                            if split_dir == SplitDirection::Horizontal {
+                                self.split_ratio = ((pos.x - editor_rect.left()) / editor_rect.width()).clamp(0.15, 0.85);
+                            } else {
+                                self.split_ratio = ((pos.y - editor_rect.top()) / editor_rect.height()).clamp(0.15, 0.85);
+                            }
+                        }
+                    }
+
+                    // Draw separator
                     let sep_color = self.theme.gutter_fg;
+                    main_ui.painter().rect_filled(divider_rect, 0.0, egui::Color32::from_rgb(60, 60, 60));
                     if split_dir == SplitDirection::Horizontal {
-                        let x = (pane1_rect.right() + pane2_rect.left()) / 2.0;
+                        let x = divider_rect.center().x;
                         main_ui.painter().line_segment(
-                            [egui::Pos2::new(x, editor_rect.top()), egui::Pos2::new(x, editor_rect.bottom())],
+                            [egui::Pos2::new(x, divider_rect.top()), egui::Pos2::new(x, divider_rect.bottom())],
                             egui::Stroke::new(1.0, sep_color),
                         );
                     } else {
-                        let y = (pane1_rect.bottom() + pane2_rect.top()) / 2.0;
+                        let y = divider_rect.center().y;
                         main_ui.painter().line_segment(
-                            [egui::Pos2::new(editor_rect.left(), y), egui::Pos2::new(editor_rect.right(), y)],
+                            [egui::Pos2::new(divider_rect.left(), y), egui::Pos2::new(divider_rect.right(), y)],
                             egui::Stroke::new(1.0, sep_color),
                         );
                     }
@@ -1844,7 +2035,12 @@ impl eframe::App for OpenEditApp {
                 // Status bar (spans full width across sidebar + editor)
                 let doc_ref = self.documents.get(self.active_tab);
                 let git_branch = self.git_state.branch.as_deref();
-                let (_, sb_action) = status_bar::render_status_bar(&mut main_ui, doc_ref, &self.theme, self.macro_recorder.is_recording(), git_branch);
+                let vim_mode_str = if self.vim_state.enabled {
+                    Some(self.vim_state.mode.to_string())
+                } else {
+                    None
+                };
+                let (_, sb_action) = status_bar::render_status_bar(&mut main_ui, doc_ref, &self.theme, self.macro_recorder.is_recording(), git_branch, vim_mode_str.as_deref());
 
                 // Handle status bar actions
                 if let Some(action) = sb_action {
@@ -2124,6 +2320,16 @@ impl eframe::App for OpenEditApp {
                     });
                 });
             self.column_editor_open = open;
+        }
+
+        // Vim command line
+        if self.vim_state.enabled && self.vim_state.mode == crate::vim::VimMode::Command {
+            egui::TopBottomPanel::bottom("vim_command_line").show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(":").monospace().strong());
+                    ui.label(egui::RichText::new(&self.vim_state.command_line).monospace());
+                });
+            });
         }
 
         // Request continuous repaint for cursor blink etc.

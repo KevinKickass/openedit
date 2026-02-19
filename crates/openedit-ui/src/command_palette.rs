@@ -122,6 +122,21 @@ pub fn all_commands() -> Vec<Command> {
         Command { id: "macro.playback", label: "Playback Macro", shortcut: "Ctrl+Shift+Q" },
         // Read-only
         Command { id: "edit.toggle_read_only", label: "Toggle Read-Only Mode", shortcut: "" },
+        // Vim mode
+        Command { id: "edit.toggle_vim_mode", label: "Toggle Vim Mode", shortcut: "" },
+        // Zen mode
+        Command { id: "view.zen_mode", label: "Toggle Zen Mode", shortcut: "F11" },
+        // Theme selector (individual themes)
+        Command { id: "view.theme.monokai", label: "Theme: Monokai", shortcut: "" },
+        Command { id: "view.theme.dracula", label: "Theme: Dracula", shortcut: "" },
+        Command { id: "view.theme.solarized_dark", label: "Theme: Solarized Dark", shortcut: "" },
+        Command { id: "view.theme.solarized_light", label: "Theme: Solarized Light", shortcut: "" },
+        Command { id: "view.theme.nord", label: "Theme: Nord", shortcut: "" },
+        Command { id: "view.theme.one_dark", label: "Theme: One Dark", shortcut: "" },
+        Command { id: "view.theme.gruvbox", label: "Theme: Gruvbox", shortcut: "" },
+        Command { id: "view.theme.tokyo_night", label: "Theme: Tokyo Night", shortcut: "" },
+        Command { id: "view.theme.dark", label: "Theme: Dark (Default)", shortcut: "" },
+        Command { id: "view.theme.light", label: "Theme: Light", shortcut: "" },
     ]
 }
 

@@ -29,6 +29,10 @@ pub struct FindInFilesState {
     pub case_sensitive: bool,
     pub use_regex: bool,
     pub searching: bool,
+    /// Replace text for find-and-replace.
+    pub replace_text: String,
+    /// Whether to show the replace input.
+    pub show_replace: bool,
     /// Channel receiver for background search results.
     result_rx: Option<mpsc::Receiver<Vec<FileMatch>>>,
     /// Which file indices are collapsed in the results view.
@@ -51,6 +55,8 @@ impl Default for FindInFilesState {
             case_sensitive: false,
             use_regex: false,
             searching: false,
+            replace_text: String::new(),
+            show_replace: false,
             result_rx: None,
             collapsed_files: std::collections::HashSet::new(),
             total_matches: 0,
@@ -223,6 +229,48 @@ fn perform_search(
     file_matches
 }
 
+/// Perform replace all across files.
+fn replace_all_in_files(state: &mut FindInFilesState) {
+    let pattern = if state.use_regex {
+        if state.case_sensitive {
+            regex::Regex::new(&state.query)
+        } else {
+            regex::Regex::new(&format!("(?i){}", state.query))
+        }
+    } else {
+        let escaped = regex::escape(&state.query);
+        if state.case_sensitive {
+            regex::Regex::new(&escaped)
+        } else {
+            regex::Regex::new(&format!("(?i){}", escaped))
+        }
+    };
+
+    let pattern = match pattern {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+
+    let root = PathBuf::from(&state.search_path);
+    let mut replaced_count = 0usize;
+
+    for file_match in &state.results {
+        let abs_path = root.join(&file_match.path);
+        if let Ok(content) = std::fs::read_to_string(&abs_path) {
+            let new_content = pattern.replace_all(&content, state.replace_text.as_str());
+            if new_content != content {
+                let _ = std::fs::write(&abs_path, new_content.as_ref());
+                replaced_count += file_match.matches.len();
+            }
+        }
+    }
+
+    // Clear results after replace
+    state.results.clear();
+    state.total_matches = 0;
+    log::info!("Replaced {} occurrences across files", replaced_count);
+}
+
 /// Render the Find in Files panel.
 ///
 /// Returns `Some((absolute_path, line_number))` if a result was clicked,
@@ -286,6 +334,20 @@ pub fn render_find_in_files_panel(
                 );
             });
 
+            // Replace input
+            ui.horizontal(|ui| {
+                ui.toggle_value(&mut state.show_replace, "↔")
+                    .on_hover_text("Toggle Replace");
+                if state.show_replace {
+                    ui.label("Replace:");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut state.replace_text)
+                            .hint_text("Replace with...")
+                            .desired_width(ui.available_width() - 80.0),
+                    );
+                }
+            });
+
             // Options row: toggles and search button.
             ui.horizontal(|ui| {
                 ui.toggle_value(&mut state.case_sensitive, "Aa")
@@ -301,6 +363,12 @@ pub fn render_find_in_files_panel(
                 );
                 if search_btn.clicked() {
                     start_search(state);
+                }
+
+                if state.show_replace && !state.results.is_empty() {
+                    if ui.button("Replace All").clicked() {
+                        replace_all_in_files(state);
+                    }
                 }
 
                 if state.searching {

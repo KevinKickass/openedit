@@ -22,6 +22,7 @@ pub fn render_status_bar(
     theme: &EditorTheme,
     macro_recording: bool,
     git_branch: Option<&str>,
+    vim_mode: Option<&str>,
 ) -> (f32, Option<StatusBarAction>) {
     let rect = ui.available_rect_before_wrap();
     let bar_rect = egui::Rect::from_min_size(
@@ -101,6 +102,25 @@ pub fn render_status_bar(
             &branch_text,
             egui::FontId::proportional(12.0),
             theme.status_bar_fg,
+        );
+    }
+
+    // Vim mode indicator
+    if let Some(mode) = vim_mode {
+        let vim_x = bar_rect.center().x;
+        let vim_color = match mode {
+            "NORMAL" => egui::Color32::from_rgb(100, 200, 100),
+            "INSERT" => egui::Color32::from_rgb(100, 150, 255),
+            "VISUAL" | "V-LINE" => egui::Color32::from_rgb(255, 180, 50),
+            "COMMAND" => egui::Color32::from_rgb(200, 100, 200),
+            _ => theme.status_bar_fg,
+        };
+        ui.painter().text(
+            egui::Pos2::new(vim_x, bar_rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            &format!("-- {} --", mode),
+            egui::FontId::monospace(12.0),
+            vim_color,
         );
     }
 
