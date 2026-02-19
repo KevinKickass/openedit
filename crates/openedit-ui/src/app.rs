@@ -130,6 +130,14 @@ pub struct OpenEditApp {
     /// Split divider drag state.
     split_ratio: f32,
     split_dragging: bool,
+    /// Show line numbers in the gutter.
+    show_line_numbers: bool,
+    /// Auto-save on focus loss / timer.
+    auto_save: bool,
+    /// Show the "About OpenEdit" window.
+    show_about: bool,
+    /// Show the keyboard shortcuts cheatsheet overlay.
+    show_shortcuts: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -252,6 +260,10 @@ impl OpenEditApp {
             zen_mode: false,
             split_ratio: 0.5,
             split_dragging: false,
+            show_line_numbers: true,
+            auto_save: false,
+            show_about: false,
+            show_shortcuts: false,
         };
 
         // If no files specified, try to restore session; otherwise open untitled doc
@@ -1472,6 +1484,273 @@ impl eframe::App for OpenEditApp {
             .map(|d| (d.display_name(), d.modified, d.path.as_ref().map(|p| p.display().to_string())))
             .collect();
 
+        // ── Menu bar ──────────────────────────────────────────────
+        if !self.zen_mode {
+            egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
+                egui::menu::bar(ui, |ui| {
+                    // ── File ──
+                    ui.menu_button("File", |ui| {
+                        if ui.button("New File          Ctrl+N").clicked() {
+                            self.documents.push(Document::new());
+                            self.active_tab = self.documents.len() - 1;
+                            ui.close_menu();
+                        }
+                        if ui.button("Open File         Ctrl+O").clicked() {
+                            self.open_dialog();
+                            ui.close_menu();
+                        }
+                        if ui.button("Open Folder").clicked() {
+                            if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+                                self.sidebar_state.visible = true;
+                                self.sidebar_state.load_tree(&dir);
+                            }
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        if ui.button("Save              Ctrl+S").clicked() {
+                            self.save_current();
+                            ui.close_menu();
+                        }
+                        if ui.button("Save As       Ctrl+Shift+S").clicked() {
+                            self.save_as();
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        if ui.button("Close Tab         Ctrl+W").clicked() {
+                            let idx = self.active_tab;
+                            self.close_tab(idx);
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        if ui.button("Exit              Ctrl+Q").clicked() {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                            ui.close_menu();
+                        }
+                    });
+
+                    // ── Edit ──
+                    ui.menu_button("Edit", |ui| {
+                        if ui.button("Undo              Ctrl+Z").clicked() {
+                            self.execute_command("edit.undo");
+                            ui.close_menu();
+                        }
+                        if ui.button("Redo              Ctrl+Y").clicked() {
+                            self.execute_command("edit.redo");
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        if ui.button("Cut               Ctrl+X").clicked() {
+                            if let Some(doc) = self.documents.get_mut(self.active_tab) {
+                                if doc.cursors.primary().has_selection() {
+                                    let text = doc.selected_text();
+                                    self.pending_clipboard = Some(text);
+                                    doc.delete_selection_public();
+                                }
+                            }
+                            ui.close_menu();
+                        }
+                        if ui.button("Copy              Ctrl+C").clicked() {
+                            if let Some(doc) = self.documents.get(self.active_tab) {
+                                if doc.cursors.primary().has_selection() {
+                                    self.pending_clipboard = Some(doc.selected_text());
+                                }
+                            }
+                            ui.close_menu();
+                        }
+                        if ui.button("Paste             Ctrl+V").clicked() {
+                            log::info!("Paste: use Ctrl+V in editor");
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        if ui.button("Find              Ctrl+F").clicked() {
+                            self.execute_command("nav.find");
+                            ui.close_menu();
+                        }
+                        if ui.button("Find in Files Ctrl+Shift+F").clicked() {
+                            self.execute_command("nav.find_in_files");
+                            ui.close_menu();
+                        }
+                        if ui.button("Replace           Ctrl+H").clicked() {
+                            self.execute_command("nav.replace");
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        if ui.button("Select All        Ctrl+A").clicked() {
+                            self.execute_command("edit.select_all");
+                            ui.close_menu();
+                        }
+                        if ui.button("Toggle Comment    Ctrl+/").clicked() {
+                            self.execute_command("edit.toggle_comment");
+                            ui.close_menu();
+                        }
+                    });
+
+                    // ── View ──
+                    ui.menu_button("View", |ui| {
+                        if ui.button("Command Palette Ctrl+Shift+P").clicked() {
+                            self.command_palette.open = true;
+                            self.command_palette.query.clear();
+                            self.command_palette.selected = 0;
+                            ui.close_menu();
+                        }
+                        if ui.button("Toggle Sidebar    Ctrl+B").clicked() {
+                            self.execute_command("view.toggle_sidebar");
+                            ui.close_menu();
+                        }
+                        if ui.button("Toggle Terminal   Ctrl+`").clicked() {
+                            self.execute_command("view.toggle_terminal");
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        if ui.button(if self.show_minimap { "✓ Minimap" } else { "  Minimap" }).clicked() {
+                            self.execute_command("view.toggle_minimap");
+                            ui.close_menu();
+                        }
+                        if ui.button(if self.show_line_numbers { "✓ Line Numbers" } else { "  Line Numbers" }).clicked() {
+                            self.show_line_numbers = !self.show_line_numbers;
+                            ui.close_menu();
+                        }
+                        if ui.button(if self.word_wrap { "✓ Word Wrap" } else { "  Word Wrap" }).clicked() {
+                            self.execute_command("view.toggle_word_wrap");
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        if ui.button("Zen Mode          F11").clicked() {
+                            self.execute_command("view.zen_mode");
+                            ui.close_menu();
+                        }
+                        if ui.button("Zoom In           Ctrl+=").clicked() {
+                            self.execute_command("view.zoom_in");
+                            ui.close_menu();
+                        }
+                        if ui.button("Zoom Out          Ctrl+-").clicked() {
+                            self.execute_command("view.zoom_out");
+                            ui.close_menu();
+                        }
+                    });
+
+                    // ── Selection ──
+                    ui.menu_button("Selection", |ui| {
+                        if ui.button("Add Cursor Above  Ctrl+Alt+Up").clicked() {
+                            log::info!("Add Cursor Above: not yet implemented");
+                            ui.close_menu();
+                        }
+                        if ui.button("Add Cursor Below  Ctrl+Alt+Down").clicked() {
+                            log::info!("Add Cursor Below: not yet implemented");
+                            ui.close_menu();
+                        }
+                        if ui.button("Select All Occurrences Ctrl+Shift+L").clicked() {
+                            self.execute_command("edit.select_all_occurrences");
+                            ui.close_menu();
+                        }
+                        if ui.button("Add Next Occurrence    Ctrl+D").clicked() {
+                            self.execute_command("edit.select_next_occurrence");
+                            ui.close_menu();
+                        }
+                    });
+
+                    // ── Go ──
+                    ui.menu_button("Go", |ui| {
+                        if ui.button("Go to Line        Ctrl+G").clicked() {
+                            self.execute_command("nav.go_to_line");
+                            ui.close_menu();
+                        }
+                        if ui.button("Go to File        Ctrl+P").clicked() {
+                            self.execute_command("nav.go_to_file");
+                            ui.close_menu();
+                        }
+                        if ui.button("Go to Definition  F12").clicked() {
+                            log::info!("Go to Definition: LSP required");
+                            ui.close_menu();
+                        }
+                        if ui.button("Go to References  Shift+F12").clicked() {
+                            log::info!("Go to References: LSP required");
+                            ui.close_menu();
+                        }
+                    });
+
+                    // ── Terminal ──
+                    ui.menu_button("Terminal", |ui| {
+                        if ui.button("New Terminal").clicked() {
+                            self.terminal_state.visible = true;
+                            self.terminal_state.start();
+                            self.terminal_focused = true;
+                            ui.close_menu();
+                        }
+                        if ui.button("Split Terminal").clicked() {
+                            log::info!("Split Terminal: not yet implemented");
+                            ui.close_menu();
+                        }
+                    });
+
+                    // ── Settings ──
+                    ui.menu_button("Settings", |ui| {
+                        ui.menu_button("Theme", |ui| {
+                            for name in EditorTheme::all_names() {
+                                let label = if self.theme.name == *name {
+                                    format!("✓ {}", name)
+                                } else {
+                                    format!("  {}", name)
+                                };
+                                if ui.button(label).clicked() {
+                                    self.theme = EditorTheme::by_name(name);
+                                    self.save_config_state();
+                                    ui.close_menu();
+                                }
+                            }
+                        });
+                        if ui.button(if self.vim_state.enabled { "✓ Vim Mode" } else { "  Vim Mode" }).clicked() {
+                            self.execute_command("edit.toggle_vim_mode");
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        ui.horizontal(|ui| {
+                            ui.label("Font Size:");
+                            if ui.small_button("−").clicked() {
+                                self.font_size = (self.font_size - 1.0).max(6.0);
+                                self.save_config_state();
+                            }
+                            ui.label(format!("{:.0}", self.font_size));
+                            if ui.small_button("+").clicked() {
+                                self.font_size = (self.font_size + 1.0).min(48.0);
+                                self.save_config_state();
+                            }
+                        });
+                        ui.menu_button("Tab Size", |ui| {
+                            for &size in &[2u32, 4, 8] {
+                                let label = if self.current_config().editor.tab_size == size {
+                                    format!("✓ {}", size)
+                                } else {
+                                    format!("  {}", size)
+                                };
+                                if ui.button(label).clicked() {
+                                    log::info!("Tab size set to {}", size);
+                                    ui.close_menu();
+                                }
+                            }
+                        });
+                        if ui.button(if self.auto_save { "✓ Auto Save" } else { "  Auto Save" }).clicked() {
+                            self.auto_save = !self.auto_save;
+                            log::info!("Auto Save: {}", if self.auto_save { "enabled" } else { "disabled" });
+                            ui.close_menu();
+                        }
+                    });
+
+                    // ── Help ──
+                    ui.menu_button("Help", |ui| {
+                        if ui.button("About OpenEdit").clicked() {
+                            self.show_about = true;
+                            ui.close_menu();
+                        }
+                        if ui.button("Keyboard Shortcuts").clicked() {
+                            self.show_shortcuts = true;
+                            ui.close_menu();
+                        }
+                    });
+                });
+            });
+        }
+
         // Render
         egui::CentralPanel::default()
             .frame(egui::Frame::none().fill(self.theme.background))
@@ -2320,6 +2599,91 @@ impl eframe::App for OpenEditApp {
                     });
                 });
             self.column_editor_open = open;
+        }
+
+        // About dialog
+        if self.show_about {
+            let mut open = self.show_about;
+            egui::Window::new("About OpenEdit")
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.heading("OpenEdit");
+                        ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
+                        ui.add_space(8.0);
+                        ui.label("A cross-platform text and code editor");
+                        ui.label("Built with egui and Rust");
+                        ui.add_space(8.0);
+                        ui.label("MIT / Apache-2.0 License");
+                    });
+                });
+            self.show_about = open;
+        }
+
+        // Keyboard shortcuts cheatsheet
+        if self.show_shortcuts {
+            let mut open = self.show_shortcuts;
+            egui::Window::new("Keyboard Shortcuts")
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(true)
+                .default_size([500.0, 500.0])
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        let shortcuts = [
+                            ("File", &[
+                                ("Ctrl+N", "New File"),
+                                ("Ctrl+O", "Open File"),
+                                ("Ctrl+S", "Save"),
+                                ("Ctrl+Shift+S", "Save As"),
+                                ("Ctrl+W", "Close Tab"),
+                            ] as &[(&str, &str)]),
+                            ("Edit", &[
+                                ("Ctrl+Z", "Undo"),
+                                ("Ctrl+Y", "Redo"),
+                                ("Ctrl+X", "Cut"),
+                                ("Ctrl+C", "Copy"),
+                                ("Ctrl+V", "Paste"),
+                                ("Ctrl+/", "Toggle Comment"),
+                                ("Ctrl+D", "Add Next Occurrence"),
+                                ("Ctrl+Shift+L", "Select All Occurrences"),
+                            ]),
+                            ("Navigation", &[
+                                ("Ctrl+G", "Go to Line"),
+                                ("Ctrl+P", "Go to File"),
+                                ("Ctrl+F", "Find"),
+                                ("Ctrl+H", "Replace"),
+                                ("Ctrl+Shift+F", "Find in Files"),
+                                ("Ctrl+Shift+P", "Command Palette"),
+                            ]),
+                            ("View", &[
+                                ("Ctrl+B", "Toggle Sidebar"),
+                                ("Ctrl+`", "Toggle Terminal"),
+                                ("Ctrl+=", "Zoom In"),
+                                ("Ctrl+-", "Zoom Out"),
+                                ("F11", "Zen Mode"),
+                            ]),
+                        ];
+                        for (section, items) in &shortcuts {
+                            ui.heading(*section);
+                            egui::Grid::new(format!("shortcuts_{}", section))
+                                .striped(true)
+                                .show(ui, |ui| {
+                                    for (key, desc) in *items {
+                                        ui.label(egui::RichText::new(*key).monospace().strong());
+                                        ui.label(*desc);
+                                        ui.end_row();
+                                    }
+                                });
+                            ui.add_space(8.0);
+                        }
+                    });
+                });
+            self.show_shortcuts = open;
         }
 
         // Vim command line
