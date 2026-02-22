@@ -530,6 +530,11 @@ pub fn render_editor(
     // Handle input
     let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
 
+    // Text cursor icon when hovering over the editor area
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
+    }
+
     // Mouse position to document position helper (accounts for folding + wrapping)
     let mouse_to_doc_pos = |pos: Pos2| -> Position {
         let screen_row = ((pos.y - rect.top()) / line_height) as usize;
@@ -603,7 +608,9 @@ pub fn render_editor(
     }
 
     // Keyboard input
+    let cursor_before = doc.cursors.primary().position;
     let modified = handle_keyboard_input(ui, doc, macro_rec);
+    let cursor_moved_by_keyboard = doc.cursors.primary().position != cursor_before || modified;
 
     // Update autocomplete after edits
     if modified {
@@ -632,8 +639,12 @@ pub fn render_editor(
         }
     }
 
-    // Ensure cursor is visible (auto-scroll, accounting for folding + wrapping)
-    ensure_cursor_visible_wrapped(doc, visible_lines, &all_visual_rows, word_wrap, wrap_cols);
+    // Ensure cursor is visible only when cursor moved via keyboard.
+    // When the user scrolls with the mouse, cursor_moved_by_keyboard is false,
+    // so we don't fight the scroll by pulling the viewport back to the cursor.
+    if cursor_moved_by_keyboard {
+        ensure_cursor_visible_wrapped(doc, visible_lines, &all_visual_rows, word_wrap, wrap_cols);
+    }
 
     modified
 }

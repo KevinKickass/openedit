@@ -1614,6 +1614,11 @@ impl eframe::App for OpenEditApp {
                             self.execute_command("view.toggle_word_wrap");
                             ui.close_menu();
                         }
+                        if ui.button(if self.show_markdown_preview { "✓ Markdown Preview  Ctrl+Shift+M" } else { "  Markdown Preview  Ctrl+Shift+M" }).clicked() {
+                            self.show_markdown_preview = !self.show_markdown_preview;
+                            self.markdown_preview_scroll = 0.0;
+                            ui.close_menu();
+                        }
                         ui.separator();
                         if ui.button("Zen Mode          F11").clicked() {
                             self.execute_command("view.zen_mode");
