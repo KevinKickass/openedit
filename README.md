@@ -1,5 +1,10 @@
 # OpenEdit
 
+[![Build](https://github.com/KevinKickass/openedit/actions/workflows/ci.yml/badge.svg)](https://github.com/KevinKickass/openedit/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/Rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)]()
+
 A fast, lightweight, cross-platform text and code editor. Built with Rust.
 
 Opens instantly. Handles large files. Runs everywhere. No bloat.
@@ -45,7 +50,7 @@ Download the latest release for your platform:
 Requires Rust 1.75+ (stable toolchain).
 
 ```bash
-git clone https://github.com/your-org/openedit.git
+git clone https://github.com/KevinKickass/openedit.git
 cd openedit
 cargo build --release
 ```
