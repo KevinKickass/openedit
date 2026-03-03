@@ -11,139 +11,139 @@
 ## High Priority (Phase 1 — MVP)
 
 ### Project Foundation
-- [ ] Cargo workspace setup with egui/eframe
-- [ ] Basic window with dark theme
-- [ ] CI/CD pipeline (GitHub Actions: build Windows/macOS/Linux)
+- [x] Cargo workspace setup with egui/eframe
+- [x] Basic window with dark theme
+- [x] CI/CD pipeline (GitHub Actions: build Windows/macOS/Linux)
 
 ### Text Buffer
-- [ ] Rope-based text buffer (use `ropey` crate)
-- [ ] Efficient insert/delete at any position
-- [ ] Line index for fast line-number lookups
-- [ ] Memory-mapped file loading for large files (>100 MB)
-- [ ] Lazy viewport rendering (only render visible lines)
+- [x] Rope-based text buffer (use `ropey` crate)
+- [x] Efficient insert/delete at any position
+- [x] Line index for fast line-number lookups
+- [x] Memory-mapped file loading for large files (>100 MB)
+- [x] Lazy viewport rendering (only render visible lines)
 
 ### Editor Viewport
-- [ ] GPU-accelerated text rendering via egui
-- [ ] Line numbers gutter
-- [ ] Cursor rendering and movement (arrow keys, Home/End, Ctrl+arrows)
-- [ ] Text selection (Shift+arrows, Shift+Click, double-click word, triple-click line)
-- [ ] Current line highlight
-- [ ] Smooth scrolling
+- [x] GPU-accelerated text rendering via egui
+- [x] Line numbers gutter
+- [x] Cursor rendering and movement (arrow keys, Home/End, Ctrl+arrows)
+- [x] Text selection (Shift+arrows, Shift+Click, double-click word, triple-click line)
+- [x] Current line highlight
+- [x] Smooth scrolling
 
 ### File I/O
-- [ ] Open file (native dialog via `rfd` crate)
-- [ ] Save / Save As
-- [ ] **Encoding detection** (chardetng or similar) — auto-detect on open
-- [ ] **Encoding conversion** — switch encoding from status bar (UTF-8, UTF-16 LE/BE, ISO-8859-1, Windows-1252, etc.)
-- [ ] Line ending detection and display (CRLF/LF/CR)
-- [ ] Line ending conversion (status bar toggle)
+- [x] Open file (native dialog via `rfd` crate)
+- [x] Save / Save As
+- [x] **Encoding detection** (chardetng or similar) — auto-detect on open
+- [x] **Encoding conversion** — switch encoding from status bar (UTF-8, UTF-16 LE/BE, ISO-8859-1, Windows-1252, etc.)
+- [x] Line ending detection and display (CRLF/LF/CR)
+- [x] Line ending conversion (status bar toggle)
 
 ### Multi-Tab
-- [ ] Tab bar with close buttons
-- [ ] Ctrl+Tab / Ctrl+Shift+Tab to switch
-- [ ] Modified indicator (dot/asterisk on unsaved tabs)
-- [ ] Drag & drop reorder
-- [ ] Middle-click to close
-- [ ] Context menu (Close, Close Others, Close All, Copy Path)
+- [x] Tab bar with close buttons
+- [x] Ctrl+Tab / Ctrl+Shift+Tab to switch
+- [x] Modified indicator (dot/asterisk on unsaved tabs)
+- [x] Drag & drop reorder
+- [x] Middle-click to close
+- [x] Context menu (Close, Close Others, Close All, Copy Path)
 
 ### Basic Editing
-- [ ] Undo/Redo (operation-based, not snapshot-based)
-- [ ] Cut/Copy/Paste (system clipboard)
-- [ ] Select All
-- [ ] Duplicate line (Ctrl+D — Notepad++ compat)
-- [ ] Move line up/down (Alt+Up/Down)
-- [ ] Delete line (Ctrl+Shift+K)
-- [ ] Auto-indent on Enter
-- [ ] Tab/Shift+Tab indent/unindent selection
+- [x] Undo/Redo (operation-based, not snapshot-based)
+- [x] Cut/Copy/Paste (system clipboard)
+- [x] Select All
+- [x] Duplicate line (Ctrl+D — Notepad++ compat)
+- [x] Move line up/down (Alt+Up/Down)
+- [x] Delete line (Ctrl+Shift+K)
+- [x] Auto-indent on Enter
+- [x] Tab/Shift+Tab indent/unindent selection
 
 ### Search
-- [ ] Find (Ctrl+F) — incremental highlight
-- [ ] Replace (Ctrl+H)
-- [ ] Regex support
-- [ ] Case sensitive / whole word toggles
-- [ ] Search wrap-around
-- [ ] Match count display
+- [x] Find (Ctrl+F) — incremental highlight
+- [x] Replace (Ctrl+H)
+- [x] Regex support
+- [x] Case sensitive / whole word toggles
+- [x] Search wrap-around
+- [x] Match count display
 
 ### Syntax Highlighting
-- [ ] tree-sitter integration
-- [ ] Language auto-detection from file extension
-- [ ] Top 20 languages: Rust, Go, Python, JavaScript, TypeScript, C, C++, Java, HTML, CSS, JSON, YAML, TOML, XML, SQL, Bash, PHP, Ruby, Markdown, Lua
-- [ ] Language selector in status bar
+- [x] tree-sitter integration
+- [x] Language auto-detection from file extension
+- [x] Top 20 languages: Rust, Go, Python, JavaScript, TypeScript, C, C++, Java, HTML, CSS, JSON, YAML, TOML, XML, SQL, Bash, PHP, Ruby, Markdown, Lua
+- [x] Language selector in status bar
 
 ### Status Bar
-- [ ] Cursor position (Ln X, Col Y)
-- [ ] Selection count (chars/lines selected)
-- [ ] File encoding (clickable → change)
-- [ ] Line ending (clickable → change)
-- [ ] Language (clickable → change)
-- [ ] Tab size / Spaces vs Tabs (clickable → change)
+- [x] Cursor position (Ln X, Col Y)
+- [x] Selection count (chars/lines selected)
+- [x] File encoding (clickable → change)
+- [x] Line ending (clickable → change)
+- [x] Language (clickable → change)
+- [x] Tab size / Spaces vs Tabs (clickable → change)
 
 ---
 
 ## Medium Priority (Phase 2 — Power Features)
 
 ### Built-in Tools (Notepad++ Parity)
-- [ ] **Base64 encode/decode** — Selection → Transform → Base64 Encode/Decode
-- [ ] **URL encode/decode**
-- [ ] **JSON pretty print / minify**
-- [ ] **XML pretty print**
-- [ ] **Sort lines** (ascending, descending, case-insensitive, numeric)
-- [ ] **Remove duplicate lines**
-- [ ] **Remove empty lines**
-- [ ] **Join lines**
-- [ ] **UPPERCASE / lowercase / Title Case**
-- [ ] **Trim trailing whitespace**
-- [ ] **Line operations** — split, reverse, shuffle
-- [ ] **Hex to decimal / decimal to hex conversion**
-- [ ] **Hash generation** (MD5, SHA1, SHA256 of selection)
-- [ ] **Timestamp conversion** (unix ↔ human readable)
+- [x] **Base64 encode/decode** — Selection → Transform → Base64 Encode/Decode
+- [x] **URL encode/decode**
+- [x] **JSON pretty print / minify**
+- [x] **XML pretty print**
+- [x] **Sort lines** (ascending, descending, case-insensitive, numeric)
+- [x] **Remove duplicate lines**
+- [x] **Remove empty lines**
+- [x] **Join lines**
+- [x] **UPPERCASE / lowercase / Title Case**
+- [x] **Trim trailing whitespace**
+- [x] **Line operations** — split, reverse, shuffle
+- [x] **Hex to decimal / decimal to hex conversion**
+- [x] **Hash generation** (MD5, SHA1, SHA256 of selection)
+- [x] **Timestamp conversion** (unix ↔ human readable)
 
 ### Multi-Cursor & Column Mode
-- [ ] Ctrl+Click to add cursor
-- [ ] Ctrl+D to select next occurrence
-- [ ] Ctrl+Shift+L to select all occurrences
-- [ ] Alt+Shift+Drag for column/block selection
-- [ ] Column editor (insert text/numbers at column across lines)
+- [x] Ctrl+Click to add cursor
+- [x] Ctrl+D to select next occurrence
+- [x] Ctrl+Shift+L to select all occurrences
+- [x] Alt+Shift+Drag for column/block selection
+- [x] Column editor (insert text/numbers at column across lines)
 
 ### Navigation
-- [ ] Go to line (Ctrl+G)
-- [ ] Command palette (Ctrl+Shift+P) — fuzzy search all commands
-- [ ] Bookmarks (Ctrl+F2 toggle, F2 next, Shift+F2 prev — Notepad++ compat)
-- [ ] Bracket matching (highlight + Ctrl+B to jump)
-- [ ] Code folding (tree-sitter based)
+- [x] Go to line (Ctrl+G)
+- [x] Command palette (Ctrl+Shift+P) — fuzzy search all commands
+- [x] Bookmarks (Ctrl+F2 toggle, F2 next, Shift+F2 prev — Notepad++ compat)
+- [x] Bracket matching (highlight + Ctrl+B to jump)
+- [x] Code folding (tree-sitter based)
 - [ ] Breadcrumb bar
 
 ### Markdown Preview (KILLER FEATURE)
-- [ ] Split view: editor left, rendered preview right
-- [ ] Live preview — updates as you type (debounced ~100ms)
-- [ ] Render via egui: headings, bold, italic, code blocks, lists, tables, links, images
-- [ ] Syntax highlighting in code blocks (tree-sitter)
-- [ ] Scroll sync between editor and preview
-- [ ] Toggle preview: Ctrl+Shift+M
-- [ ] Export to HTML
-- [ ] Support GitHub Flavored Markdown (GFM): tables, task lists, strikethrough
-- [ ] Image preview (inline, from relative paths or URLs)
+- [x] Split view: editor left, rendered preview right
+- [x] Live preview — updates as you type (debounced ~100ms)
+- [x] Render via egui: headings, bold, italic, code blocks, lists, tables, links, images
+- [x] Syntax highlighting in code blocks (tree-sitter)
+- [x] Scroll sync between editor and preview
+- [x] Toggle preview: Ctrl+Shift+M
+- [x] Export to HTML
+- [x] Support GitHub Flavored Markdown (GFM): tables, task lists, strikethrough
+- [x] Image preview (inline, from relative paths or URLs)
 - [ ] Mermaid diagram rendering (stretch goal)
-- [ ] Use `pulldown-cmark` crate for parsing
+- [x] Use `pulldown-cmark` crate for parsing
 
 ### Find in Files
-- [ ] Ctrl+Shift+F — search across folder/project
-- [ ] Results panel with file:line previews
-- [ ] Replace in files
-- [ ] Include/exclude file patterns
+- [x] Ctrl+Shift+F — search across folder/project
+- [x] Results panel with file:line previews
+- [x] Replace in files
+- [x] Include/exclude file patterns
 
 ### Panels
-- [ ] File explorer sidebar (tree view)
-- [ ] Function list panel (tree-sitter symbols)
-- [ ] Minimap / document map
-- [ ] Split view (horizontal + vertical)
+- [x] File explorer sidebar (tree view)
+- [x] Function list panel (tree-sitter symbols)
+- [x] Minimap / document map
+- [x] Split view (horizontal + vertical)
 
 ### File Features
-- [ ] File change detection (external modification → reload prompt)
-- [ ] Auto-save / crash recovery (swap files)
-- [ ] Session restore (reopen last tabs on startup)
-- [ ] Recent files list (Ctrl+Shift+O)
-- [ ] Drag & drop files onto window to open
+- [x] File change detection (external modification → reload prompt)
+- [x] Auto-save / crash recovery (swap files)
+- [x] Session restore (reopen last tabs on startup)
+- [x] Recent files list (Ctrl+Shift+O)
+- [x] Drag & drop files onto window to open
 
 ---
 
