@@ -125,6 +125,16 @@ pub fn all_commands() -> Vec<Command> {
             shortcut: "F12",
         },
         Command {
+            id: "nav.find_references",
+            label: "Find All References",
+            shortcut: "Shift+F12",
+        },
+        Command {
+            id: "nav.rename_symbol",
+            label: "Rename Symbol",
+            shortcut: "F2",
+        },
+        Command {
             id: "nav.hover_info",
             label: "Show Hover Information",
             shortcut: "",
@@ -163,7 +173,7 @@ pub fn all_commands() -> Vec<Command> {
         Command {
             id: "nav.next_bookmark",
             label: "Next Bookmark",
-            shortcut: "F2",
+            shortcut: "",
         },
         Command {
             id: "nav.prev_bookmark",
