@@ -16,9 +16,8 @@ pub fn render_markdown_preview(
     ui.painter().rect_filled(rect, 0.0, theme.background);
 
     // Parse markdown
-    let options = Options::ENABLE_STRIKETHROUGH
-        | Options::ENABLE_TABLES
-        | Options::ENABLE_TASKLISTS;
+    let options =
+        Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES | Options::ENABLE_TASKLISTS;
     let parser = Parser::new_ext(source, options);
 
     // Collect events into renderable blocks
@@ -109,7 +108,8 @@ pub fn render_markdown_preview(
                         Pos2::new(rect.left() + padding, y),
                         Vec2::new(content_width, block_height),
                     );
-                    ui.painter().rect_filled(code_rect, 4.0, theme.current_line_bg);
+                    ui.painter()
+                        .rect_filled(code_rect, 4.0, theme.current_line_bg);
 
                     let code_y = y + 8.0;
                     for (i, line) in code_lines.iter().enumerate() {
@@ -194,7 +194,7 @@ pub fn render_markdown_preview(
 
 /// Simplified markdown block types for rendering.
 enum MdBlock {
-    Heading(usize, String),     // level, text
+    Heading(usize, String), // level, text
     Paragraph(String),
     CodeBlock(String),
     ListItem(String, bool, usize), // text, is_ordered, index
@@ -239,7 +239,11 @@ fn parse_to_blocks(parser: Parser) -> Vec<MdBlock> {
                 if in_block_quote {
                     blocks.push(MdBlock::BlockQuote(current_text.clone()));
                 } else if in_list_item {
-                    blocks.push(MdBlock::ListItem(current_text.clone(), is_ordered_list, list_index));
+                    blocks.push(MdBlock::ListItem(
+                        current_text.clone(),
+                        is_ordered_list,
+                        list_index,
+                    ));
                 } else {
                     blocks.push(MdBlock::Paragraph(current_text.clone()));
                 }

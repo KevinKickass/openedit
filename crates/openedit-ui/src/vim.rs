@@ -131,12 +131,7 @@ impl VimState {
 
     /// Handle a key event in vim mode. Returns true if the key was consumed.
     /// `modified` output parameter indicates if the document was modified.
-    pub fn handle_key(
-        &mut self,
-        key_str: &str,
-        doc: &mut Document,
-        modified: &mut bool,
-    ) -> bool {
+    pub fn handle_key(&mut self, key_str: &str, doc: &mut Document, modified: &mut bool) -> bool {
         if !self.enabled {
             return false;
         }
@@ -304,7 +299,9 @@ impl VimState {
             }
             "0" => {
                 let pos = doc.cursors.primary().position;
-                doc.cursors.primary_mut().move_to(Position::new(pos.line, 0), false);
+                doc.cursors
+                    .primary_mut()
+                    .move_to(Position::new(pos.line, 0), false);
                 return true;
             }
             "^" => {
@@ -355,7 +352,9 @@ impl VimState {
                 // Join lines
                 let pos = doc.cursors.primary().position;
                 let line_len = doc.buffer.line_len_chars_no_newline(pos.line);
-                doc.cursors.primary_mut().move_to(Position::new(pos.line, line_len), false);
+                doc.cursors
+                    .primary_mut()
+                    .move_to(Position::new(pos.line, line_len), false);
                 doc.delete_forward(); // delete newline
                 doc.insert_text(" ");
                 *modified = true;
@@ -447,7 +446,9 @@ impl VimState {
                     doc.search.current_match = Some(next);
                     if let Some(m) = doc.search.matches.get(next) {
                         let (line, col) = doc.buffer.char_to_line_col(m.start);
-                        doc.cursors.primary_mut().move_to(Position::new(line, col), false);
+                        doc.cursors
+                            .primary_mut()
+                            .move_to(Position::new(line, col), false);
                     }
                 }
                 return true;
@@ -455,11 +456,17 @@ impl VimState {
             "N" => {
                 // Previous search match
                 if let Some(idx) = doc.search.current_match {
-                    let prev = if idx == 0 { doc.search.matches.len().saturating_sub(1) } else { idx - 1 };
+                    let prev = if idx == 0 {
+                        doc.search.matches.len().saturating_sub(1)
+                    } else {
+                        idx - 1
+                    };
                     doc.search.current_match = Some(prev);
                     if let Some(m) = doc.search.matches.get(prev) {
                         let (line, col) = doc.buffer.char_to_line_col(m.start);
-                        doc.cursors.primary_mut().move_to(Position::new(line, col), false);
+                        doc.cursors
+                            .primary_mut()
+                            .move_to(Position::new(line, col), false);
                     }
                 }
                 return true;
@@ -530,23 +537,21 @@ impl VimState {
                 self.reset_pending();
                 return true;
             }
-            'g' => {
-                match key {
-                    "g" => {
-                        let count = self.count.take();
-                        if let Some(n) = count {
-                            doc.go_to_line(n.saturating_sub(1));
-                        } else {
-                            doc.move_cursor_doc_start(false);
-                        }
-                        return true;
+            'g' => match key {
+                "g" => {
+                    let count = self.count.take();
+                    if let Some(n) = count {
+                        doc.go_to_line(n.saturating_sub(1));
+                    } else {
+                        doc.move_cursor_doc_start(false);
                     }
-                    _ => {
-                        self.reset_pending();
-                        return false;
-                    }
+                    return true;
                 }
-            }
+                _ => {
+                    self.reset_pending();
+                    return false;
+                }
+            },
             'Q' => {
                 // Start recording macro to register `key`
                 if key.len() == 1 {
@@ -583,7 +588,10 @@ impl VimState {
             match op {
                 'd' => {
                     for _ in 0..count {
-                        let line_text = doc.buffer.line(doc.cursors.primary().position.line).to_string();
+                        let line_text = doc
+                            .buffer
+                            .line(doc.cursors.primary().position.line)
+                            .to_string();
                         self.yank_register = line_text;
                         self.yank_linewise = true;
                         doc.delete_line();
@@ -647,7 +655,13 @@ impl VimState {
                 };
                 match key {
                     "w" => {
-                        self.execute_operator_with_motion(real_op, doc, count, VimMotion::InnerWord, modified);
+                        self.execute_operator_with_motion(
+                            real_op,
+                            doc,
+                            count,
+                            VimMotion::InnerWord,
+                            modified,
+                        );
                         return true;
                     }
                     _ => {
@@ -984,7 +998,9 @@ impl VimState {
                 // Jump to first match
                 if let Some(m) = doc.search.matches.first() {
                     let (line, col) = doc.buffer.char_to_line_col(m.start);
-                    doc.cursors.primary_mut().move_to(Position::new(line, col), false);
+                    doc.cursors
+                        .primary_mut()
+                        .move_to(Position::new(line, col), false);
                 }
             }
             return;
@@ -1042,7 +1058,9 @@ impl VimState {
                 len + 1
             };
             let (target_line, target_col) = doc.buffer.char_to_line_col(next_line_start);
-            doc.cursors.primary_mut().move_to(Position::new(target_line, target_col), false);
+            doc.cursors
+                .primary_mut()
+                .move_to(Position::new(target_line, target_col), false);
             let text = self.yank_register.trim_end_matches('\n');
             doc.insert_text(text);
         } else {
@@ -1057,7 +1075,9 @@ impl VimState {
         }
         if self.yank_linewise {
             let line = doc.cursors.primary().position.line;
-            doc.cursors.primary_mut().move_to(Position::new(line, 0), false);
+            doc.cursors
+                .primary_mut()
+                .move_to(Position::new(line, 0), false);
             let text = self.yank_register.trim_end_matches('\n');
             doc.insert_text(text);
             doc.insert_text("\n");
@@ -1096,7 +1116,9 @@ impl VimState {
             VimAction::JoinLines => {
                 let pos = doc.cursors.primary().position;
                 let line_len = doc.buffer.line_len_chars_no_newline(pos.line);
-                doc.cursors.primary_mut().move_to(Position::new(pos.line, line_len), false);
+                doc.cursors
+                    .primary_mut()
+                    .move_to(Position::new(pos.line, line_len), false);
                 doc.delete_forward();
                 doc.insert_text(" ");
                 *modified = true;

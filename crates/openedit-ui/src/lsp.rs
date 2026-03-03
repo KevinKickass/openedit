@@ -3,14 +3,14 @@
 //! Supports rust-analyzer, pyright, tsserver and other LSP-compatible servers.
 //! Communicates via JSON-RPC over stdin/stdout.
 
-use lsp_types::*;
 use lsp_types::Uri;
-use url::Url;
+use lsp_types::*;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
+use url::Url;
 
 /// Messages from the LSP server to the UI thread.
 #[derive(Debug, Clone)]
@@ -26,10 +26,7 @@ pub enum LspEvent {
         items: Vec<LspCompletionItem>,
     },
     /// Hover result.
-    Hover {
-        request_id: i64,
-        contents: String,
-    },
+    Hover { request_id: i64, contents: String },
     /// Go to definition result.
     Definition {
         request_id: i64,
@@ -135,12 +132,18 @@ impl LspManager {
                         self.pending_completions = Some(items);
                     }
                 }
-                LspEvent::Hover { request_id, contents } => {
+                LspEvent::Hover {
+                    request_id,
+                    contents,
+                } => {
                     if request_id == self.last_hover_id {
                         self.pending_hover = Some(contents);
                     }
                 }
-                LspEvent::Definition { request_id, location } => {
+                LspEvent::Definition {
+                    request_id,
+                    location,
+                } => {
                     if request_id == self.last_definition_id {
                         self.pending_definition = location;
                     }
@@ -181,9 +184,21 @@ impl LspManager {
         };
 
         // Check if the server binary exists
-        if Command::new(cmd).arg("--version").stdout(Stdio::null()).stderr(Stdio::null()).status().is_err() {
+        if Command::new(cmd)
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_err()
+        {
             // Try which
-            if Command::new("which").arg(cmd).stdout(Stdio::null()).stderr(Stdio::null()).status().map_or(true, |s| !s.success()) {
+            if Command::new("which")
+                .arg(cmd)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .map_or(true, |s| !s.success())
+            {
                 log::warn!("LSP server '{}' not found for language '{}'", cmd, language);
                 return;
             }
@@ -391,7 +406,10 @@ impl LspManager {
         let uri = Url::from_file_path(path)
             .map(|u| u.to_string())
             .unwrap_or_default();
-        self.diagnostics.get(&uri).map(|v| v.as_slice()).unwrap_or(&[])
+        self.diagnostics
+            .get(&uri)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
     }
 
     /// Take pending completions (clears them).
@@ -493,13 +511,20 @@ fn read_lsp_messages(stdout: std::process::ChildStdout, tx: mpsc::Sender<LspEven
             match method {
                 "textDocument/publishDiagnostics" => {
                     if let Some(params) = msg.get("params") {
-                        let uri = params.get("uri").and_then(|u| u.as_str()).unwrap_or("").to_string();
-                        let diags = params.get("diagnostics").and_then(|d| d.as_array())
-                            .map(|arr| {
-                                arr.iter().filter_map(|d| parse_diagnostic(d)).collect()
-                            })
+                        let uri = params
+                            .get("uri")
+                            .and_then(|u| u.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let diags = params
+                            .get("diagnostics")
+                            .and_then(|d| d.as_array())
+                            .map(|arr| arr.iter().filter_map(|d| parse_diagnostic(d)).collect())
                             .unwrap_or_default();
-                        let _ = tx.send(LspEvent::Diagnostics { uri, diagnostics: diags });
+                        let _ = tx.send(LspEvent::Diagnostics {
+                            uri,
+                            diagnostics: diags,
+                        });
                     }
                 }
                 _ => {}
@@ -509,15 +534,29 @@ fn read_lsp_messages(stdout: std::process::ChildStdout, tx: mpsc::Sender<LspEven
             if let Some(result) = msg.get("result") {
                 // Try to determine what kind of response this is
                 if let Some(items) = parse_completion_response(result) {
-                    let _ = tx.send(LspEvent::Completions { request_id: id, items });
+                    let _ = tx.send(LspEvent::Completions {
+                        request_id: id,
+                        items,
+                    });
                 } else if let Some(hover_text) = parse_hover_response(result) {
-                    let _ = tx.send(LspEvent::Hover { request_id: id, contents: hover_text });
+                    let _ = tx.send(LspEvent::Hover {
+                        request_id: id,
+                        contents: hover_text,
+                    });
                 } else if let Some(location) = parse_definition_response(result) {
-                    let _ = tx.send(LspEvent::Definition { request_id: id, location: Some(location) });
+                    let _ = tx.send(LspEvent::Definition {
+                        request_id: id,
+                        location: Some(location),
+                    });
                 } else if result.is_null() {
                     // Could be a null hover/definition response
                     // Check if it might be an initialize response
-                    if result.get("capabilities").is_some() || msg.get("result").and_then(|r| r.get("capabilities")).is_some() {
+                    if result.get("capabilities").is_some()
+                        || msg
+                            .get("result")
+                            .and_then(|r| r.get("capabilities"))
+                            .is_some()
+                    {
                         // Send initialized notification
                         let _ = tx.send(LspEvent::Initialized);
                     }
@@ -567,11 +606,29 @@ fn parse_completion_response(result: &serde_json::Value) -> Option<Vec<LspComple
     let items: Vec<LspCompletionItem> = items_val
         .iter()
         .map(|item| {
-            let label = item.get("label").and_then(|l| l.as_str()).unwrap_or("").to_string();
-            let detail = item.get("detail").and_then(|d| d.as_str()).map(|s| s.to_string());
-            let kind = item.get("kind").and_then(|k| k.as_u64()).map(|k| completion_kind_name(k));
-            let insert_text = item.get("insertText").and_then(|t| t.as_str()).map(|s| s.to_string());
-            LspCompletionItem { label, detail, kind, insert_text }
+            let label = item
+                .get("label")
+                .and_then(|l| l.as_str())
+                .unwrap_or("")
+                .to_string();
+            let detail = item
+                .get("detail")
+                .and_then(|d| d.as_str())
+                .map(|s| s.to_string());
+            let kind = item
+                .get("kind")
+                .and_then(|k| k.as_u64())
+                .map(|k| completion_kind_name(k));
+            let insert_text = item
+                .get("insertText")
+                .and_then(|t| t.as_str())
+                .map(|s| s.to_string());
+            LspCompletionItem {
+                label,
+                detail,
+                kind,
+                insert_text,
+            }
         })
         .collect();
 
@@ -685,7 +742,8 @@ pub fn render_lsp_autocomplete(
     let popup_height = max_visible as f32 * item_height;
 
     let popup_pos = egui::Pos2::new(cursor_screen_pos.x, cursor_screen_pos.y + line_height);
-    let popup_rect = egui::Rect::from_min_size(popup_pos, egui::Vec2::new(popup_width, popup_height));
+    let popup_rect =
+        egui::Rect::from_min_size(popup_pos, egui::Vec2::new(popup_width, popup_height));
 
     // Shadow
     ui.painter().rect_filled(
@@ -695,13 +753,22 @@ pub fn render_lsp_autocomplete(
     );
 
     // Background
-    ui.painter().rect_filled(popup_rect, 4.0, egui::Color32::from_rgb(37, 37, 38));
-    ui.painter().rect_stroke(popup_rect, 4.0, egui::Stroke::new(1.0, egui::Color32::from_rgb(69, 69, 69)));
+    ui.painter()
+        .rect_filled(popup_rect, 4.0, egui::Color32::from_rgb(37, 37, 38));
+    ui.painter().rect_stroke(
+        popup_rect,
+        4.0,
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(69, 69, 69)),
+    );
 
     let font_id = egui::FontId::monospace(12.0);
     let small_font = egui::FontId::monospace(10.0);
 
-    let scroll_offset = if selected >= max_visible { selected - max_visible + 1 } else { 0 };
+    let scroll_offset = if selected >= max_visible {
+        selected - max_visible + 1
+    } else {
+        0
+    };
 
     for (vi, i) in (scroll_offset..items.len().min(scroll_offset + max_visible)).enumerate() {
         let item = &items[i];
@@ -712,7 +779,8 @@ pub fn render_lsp_autocomplete(
         );
 
         if i == selected {
-            ui.painter().rect_filled(item_rect, 0.0, egui::Color32::from_rgb(4, 57, 94));
+            ui.painter()
+                .rect_filled(item_rect, 0.0, egui::Color32::from_rgb(4, 57, 94));
         }
 
         // Kind icon
@@ -751,7 +819,11 @@ pub fn render_lsp_autocomplete(
             egui::Align2::LEFT_TOP,
             &item.label,
             font_id.clone(),
-            if i == selected { egui::Color32::WHITE } else { egui::Color32::from_rgb(188, 188, 188) },
+            if i == selected {
+                egui::Color32::WHITE
+            } else {
+                egui::Color32::from_rgb(188, 188, 188)
+            },
         );
 
         // Detail (right-aligned, dimmer)
@@ -807,7 +879,11 @@ pub fn render_diagnostic_squiggles(
         let mut x = x_start;
         let mut up = true;
         while x < x_end {
-            let sy = if up { squiggle_y - 1.5 } else { squiggle_y + 1.5 };
+            let sy = if up {
+                squiggle_y - 1.5
+            } else {
+                squiggle_y + 1.5
+            };
             points.push(egui::Pos2::new(x, sy));
             x += 3.0;
             up = !up;
@@ -815,21 +891,15 @@ pub fn render_diagnostic_squiggles(
 
         if points.len() >= 2 {
             for pair in points.windows(2) {
-                ui.painter().line_segment(
-                    [pair[0], pair[1]],
-                    egui::Stroke::new(1.2, color),
-                );
+                ui.painter()
+                    .line_segment([pair[0], pair[1]], egui::Stroke::new(1.2, color));
             }
         }
     }
 }
 
 /// Render hover tooltip.
-pub fn render_hover_tooltip(
-    ui: &mut egui::Ui,
-    text: &str,
-    pos: egui::Pos2,
-) {
+pub fn render_hover_tooltip(ui: &mut egui::Ui, text: &str, pos: egui::Pos2) {
     if text.is_empty() {
         return;
     }
@@ -844,7 +914,8 @@ pub fn render_hover_tooltip(
 
     let line_count = display.lines().count().max(1);
     let popup_height = line_count as f32 * 16.0 + 12.0;
-    let popup_width = max_width.min(display.lines().map(|l| l.len()).max().unwrap_or(10) as f32 * 7.5 + 16.0);
+    let popup_width =
+        max_width.min(display.lines().map(|l| l.len()).max().unwrap_or(10) as f32 * 7.5 + 16.0);
 
     let popup_rect = egui::Rect::from_min_size(
         egui::Pos2::new(pos.x, pos.y - popup_height - 4.0),
@@ -852,8 +923,13 @@ pub fn render_hover_tooltip(
     );
 
     // Background
-    ui.painter().rect_filled(popup_rect, 4.0, egui::Color32::from_rgb(45, 45, 48));
-    ui.painter().rect_stroke(popup_rect, 4.0, egui::Stroke::new(1.0, egui::Color32::from_rgb(80, 80, 80)));
+    ui.painter()
+        .rect_filled(popup_rect, 4.0, egui::Color32::from_rgb(45, 45, 48));
+    ui.painter().rect_stroke(
+        popup_rect,
+        4.0,
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(80, 80, 80)),
+    );
 
     ui.painter().text(
         egui::Pos2::new(popup_rect.left() + 8.0, popup_rect.top() + 6.0),

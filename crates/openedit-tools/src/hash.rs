@@ -28,7 +28,10 @@ mod tests {
     #[test]
     fn test_md5_hash() {
         // Well-known: MD5("Hello, World!") = 65a8e27d8879283831b664bd8b7f0ad4
-        assert_eq!(md5_hash("Hello, World!"), "65a8e27d8879283831b664bd8b7f0ad4");
+        assert_eq!(
+            md5_hash("Hello, World!"),
+            "65a8e27d8879283831b664bd8b7f0ad4"
+        );
     }
 
     #[test]
@@ -40,7 +43,10 @@ mod tests {
     #[test]
     fn test_sha1_hash() {
         // SHA-1("Hello, World!") = 0a0a9f2a6772942557ab5355d76af442f8f65e01
-        assert_eq!(sha1_hash("Hello, World!"), "0a0a9f2a6772942557ab5355d76af442f8f65e01");
+        assert_eq!(
+            sha1_hash("Hello, World!"),
+            "0a0a9f2a6772942557ab5355d76af442f8f65e01"
+        );
     }
 
     #[test]

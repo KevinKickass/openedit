@@ -143,7 +143,11 @@ pub fn save_config(config: &EditorConfig) {
 
     if let Some(parent) = path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
-            log::error!("Failed to create config directory {}: {}", parent.display(), e);
+            log::error!(
+                "Failed to create config directory {}: {}",
+                parent.display(),
+                e
+            );
             return;
         }
     }

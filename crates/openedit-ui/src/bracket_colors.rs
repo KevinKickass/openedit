@@ -4,12 +4,12 @@ use egui::Color32;
 
 /// Colors for nested bracket pairs (cycles through these).
 const BRACKET_COLORS: [Color32; 6] = [
-    Color32::from_rgb(255, 215, 0),    // Gold
-    Color32::from_rgb(218, 112, 214),  // Orchid
-    Color32::from_rgb(0, 191, 255),    // Deep sky blue
-    Color32::from_rgb(255, 165, 0),    // Orange
-    Color32::from_rgb(50, 205, 50),    // Lime green
-    Color32::from_rgb(255, 105, 180),  // Hot pink
+    Color32::from_rgb(255, 215, 0),   // Gold
+    Color32::from_rgb(218, 112, 214), // Orchid
+    Color32::from_rgb(0, 191, 255),   // Deep sky blue
+    Color32::from_rgb(255, 165, 0),   // Orange
+    Color32::from_rgb(50, 205, 50),   // Lime green
+    Color32::from_rgb(255, 105, 180), // Hot pink
 ];
 
 /// A bracket with its position and nesting depth.

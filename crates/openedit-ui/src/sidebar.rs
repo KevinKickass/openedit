@@ -1,4 +1,4 @@
-use crate::git::{FileGitStatus, GitManager, git_status_indicator};
+use crate::git::{git_status_indicator, FileGitStatus, GitManager};
 use crate::theme::EditorTheme;
 use egui;
 use std::path::PathBuf;
@@ -90,10 +90,7 @@ fn load_directory_children(dir: &PathBuf) -> Vec<FileTreeNode> {
 
     for entry in entries.flatten() {
         let entry_path = entry.path();
-        let file_name = entry
-            .file_name()
-            .to_string_lossy()
-            .into_owned();
+        let file_name = entry.file_name().to_string_lossy().into_owned();
 
         // Skip hidden files (starting with .)
         if file_name.starts_with('.') {
@@ -199,17 +196,21 @@ fn render_tree_node(
         ui.add_space(indent);
 
         if node.is_dir {
-            let arrow = if node.expanded { "\u{25BC}" } else { "\u{25B6}" };
+            let arrow = if node.expanded {
+                "\u{25BC}"
+            } else {
+                "\u{25B6}"
+            };
             let arrow_response = ui.add(
-                egui::Label::new(
-                    egui::RichText::new(arrow)
-                        .size(10.0)
-                        .color(theme.gutter_fg),
-                )
-                .sense(egui::Sense::click()),
+                egui::Label::new(egui::RichText::new(arrow).size(10.0).color(theme.gutter_fg))
+                    .sense(egui::Sense::click()),
             );
 
-            let folder_icon = if node.expanded { "\u{1F4C2}" } else { "\u{1F4C1}" };
+            let folder_icon = if node.expanded {
+                "\u{1F4C2}"
+            } else {
+                "\u{1F4C1}"
+            };
             let label_response = ui.add(
                 egui::Label::new(
                     egui::RichText::new(format!("{} {}", folder_icon, &node.name))
@@ -247,11 +248,7 @@ fn render_tree_node(
                 let status = gm.get_file_status(&node.path);
                 if status != FileGitStatus::Unchanged {
                     let (label, color) = git_status_indicator(status);
-                    ui.label(
-                        egui::RichText::new(label)
-                            .small()
-                            .color(color),
-                    );
+                    ui.label(egui::RichText::new(label).small().color(color));
                 }
             }
         }

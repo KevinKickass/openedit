@@ -53,7 +53,9 @@ pub fn xml_pretty_print(input: &str) -> Result<String, ToolError> {
         return Err(ToolError::InvalidInput("Empty input".to_string()));
     }
     if !trimmed.contains('<') {
-        return Err(ToolError::InvalidInput("Input does not appear to be XML".to_string()));
+        return Err(ToolError::InvalidInput(
+            "Input does not appear to be XML".to_string(),
+        ));
     }
 
     let mut output = String::with_capacity(input.len() * 2);
@@ -115,8 +117,9 @@ pub fn xml_pretty_print(input: &str) -> Result<String, ToolError> {
                     if saved_str.trim_start().starts_with(&expected_close) {
                         // Inline element: <tag>text</tag>
                         output.push_str(text_content.trim());
-                        let close_tag = read_tag(&mut chars)
-                            .map_err(|e| ToolError::InvalidInput(format!("Malformed XML: {}", e)))?;
+                        let close_tag = read_tag(&mut chars).map_err(|e| {
+                            ToolError::InvalidInput(format!("Malformed XML: {}", e))
+                        })?;
                         output.push_str(&close_tag);
                         output.push('\n');
                         continue;
@@ -161,7 +164,9 @@ pub fn xml_minify(input: &str) -> Result<String, ToolError> {
         return Err(ToolError::InvalidInput("Empty input".to_string()));
     }
     if !trimmed.contains('<') {
-        return Err(ToolError::InvalidInput("Input does not appear to be XML".to_string()));
+        return Err(ToolError::InvalidInput(
+            "Input does not appear to be XML".to_string(),
+        ));
     }
 
     let mut output = String::with_capacity(input.len());
@@ -307,7 +312,10 @@ fn read_text_content(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> St
 
 /// Extract the tag name from an opening tag string like "<tagname attr=\"val\">".
 fn extract_tag_name(tag: &str) -> String {
-    let inner = tag.trim_start_matches('<').trim_end_matches('>').trim_end_matches('/');
+    let inner = tag
+        .trim_start_matches('<')
+        .trim_end_matches('>')
+        .trim_end_matches('/');
     // Tag name is the first word
     inner
         .split(|c: char| c.is_whitespace() || c == '/' || c == '>')
@@ -327,7 +335,10 @@ pub fn dec_to_hex(input: &str) -> Result<String, ToolError> {
 
 /// Convert a hexadecimal number to decimal.
 pub fn hex_to_dec(input: &str) -> Result<String, ToolError> {
-    let trimmed = input.trim().trim_start_matches("0x").trim_start_matches("0X");
+    let trimmed = input
+        .trim()
+        .trim_start_matches("0x")
+        .trim_start_matches("0X");
     let n = i64::from_str_radix(trimmed, 16)
         .map_err(|e| ToolError::InvalidInput(format!("Not a valid hex number: {}", e)))?;
     Ok(n.to_string())
@@ -383,6 +394,21 @@ fn days_to_ymd(mut days: i64) -> (i64, u32, u32) {
 
 fn is_leap(year: i64) -> bool {
     (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+}
+
+/// Remove duplicate lines from input, preserving order of first occurrence.
+pub fn deduplicate_lines(input: &str) -> String {
+    let mut seen = std::collections::HashSet::new();
+    let mut output = String::new();
+    for line in input.lines() {
+        if seen.insert(line.to_string()) {
+            if !output.is_empty() {
+                output.push('\n');
+            }
+            output.push_str(line);
+        }
+    }
+    output
 }
 
 /// Encode special HTML characters as HTML entities.
@@ -779,11 +805,36 @@ mod tests {
     #[test]
     fn test_timestamp_to_date() {
         assert_eq!(timestamp_to_date("0").unwrap(), "1970-01-01 00:00:00 UTC");
-        assert_eq!(timestamp_to_date("1700000000").unwrap(), "2023-11-14 22:13:20 UTC");
+        assert_eq!(
+            timestamp_to_date("1700000000").unwrap(),
+            "2023-11-14 22:13:20 UTC"
+        );
     }
 
     #[test]
     fn test_timestamp_to_date_invalid() {
         assert!(timestamp_to_date("not_a_number").is_err());
+    }
+
+    // --- Deduplicate lines tests ---
+
+    #[test]
+    fn test_deduplicate_lines() {
+        assert_eq!(deduplicate_lines("a\nb\na\nc\nb"), "a\nb\nc");
+    }
+
+    #[test]
+    fn test_deduplicate_lines_empty() {
+        assert_eq!(deduplicate_lines(""), "");
+    }
+
+    #[test]
+    fn test_deduplicate_lines_no_duplicates() {
+        assert_eq!(deduplicate_lines("a\nb\nc"), "a\nb\nc");
+    }
+
+    #[test]
+    fn test_deduplicate_lines_preserves_order() {
+        assert_eq!(deduplicate_lines("x\na\nb\na\nc"), "x\na\nb\nc");
     }
 }

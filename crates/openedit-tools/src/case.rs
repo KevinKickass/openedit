@@ -74,7 +74,8 @@ pub fn to_camel_case(text: &str) -> String {
 /// Convert text to snake_case: "helloWorld" -> "hello_world"
 pub fn to_snake_case(text: &str) -> String {
     let words = split_into_words(text);
-    words.iter()
+    words
+        .iter()
         .map(|w| w.to_lowercase())
         .collect::<Vec<_>>()
         .join("_")
@@ -97,7 +98,8 @@ pub fn to_pascal_case(text: &str) -> String {
 /// Convert text to kebab-case: "hello_world" -> "hello-world"
 pub fn to_kebab_case(text: &str) -> String {
     let words = split_into_words(text);
-    words.iter()
+    words
+        .iter()
         .map(|w| w.to_lowercase())
         .collect::<Vec<_>>()
         .join("-")

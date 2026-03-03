@@ -121,11 +121,7 @@ impl Drop for TerminalState {
 }
 
 /// Render the terminal panel.
-pub fn render_terminal(
-    ui: &mut egui::Ui,
-    state: &mut TerminalState,
-    font_size: f32,
-) {
+pub fn render_terminal(ui: &mut egui::Ui, state: &mut TerminalState, font_size: f32) {
     // Poll for new output
     state.poll();
 
@@ -144,9 +140,14 @@ pub fn render_terminal(
         rect.left_top(),
         egui::Vec2::new(rect.width(), header_height),
     );
-    ui.painter().rect_filled(header_rect, 0.0, egui::Color32::from_rgb(40, 40, 40));
+    ui.painter()
+        .rect_filled(header_rect, 0.0, egui::Color32::from_rgb(40, 40, 40));
 
-    let title = if state.running { "Terminal" } else { "Terminal (inactive)" };
+    let title = if state.running {
+        "Terminal"
+    } else {
+        "Terminal (inactive)"
+    };
     ui.painter().text(
         egui::Pos2::new(rect.left() + 8.0, rect.top() + 4.0),
         egui::Align2::LEFT_TOP,
@@ -244,25 +245,25 @@ pub fn handle_terminal_input(ui: &mut egui::Ui, state: &mut TerminalState) {
                         state.send_input(text.as_bytes());
                     }
                 }
-                egui::Event::Key { key, pressed: true, .. } => {
-                    match key {
-                        egui::Key::Enter => state.send_key("Enter"),
-                        egui::Key::Backspace => state.send_key("Backspace"),
-                        egui::Key::Tab => state.send_key("Tab"),
-                        egui::Key::Escape => state.send_key("Escape"),
-                        egui::Key::ArrowUp => state.send_key("ArrowUp"),
-                        egui::Key::ArrowDown => state.send_key("ArrowDown"),
-                        egui::Key::ArrowLeft => state.send_key("ArrowLeft"),
-                        egui::Key::ArrowRight => state.send_key("ArrowRight"),
-                        egui::Key::Home => state.send_key("Home"),
-                        egui::Key::End => state.send_key("End"),
-                        egui::Key::Delete => state.send_key("Delete"),
-                        egui::Key::C if ctrl => state.send_input(b"\x03"),
-                        egui::Key::D if ctrl => state.send_input(b"\x04"),
-                        egui::Key::L if ctrl => state.send_input(b"\x0c"),
-                        _ => {}
-                    }
-                }
+                egui::Event::Key {
+                    key, pressed: true, ..
+                } => match key {
+                    egui::Key::Enter => state.send_key("Enter"),
+                    egui::Key::Backspace => state.send_key("Backspace"),
+                    egui::Key::Tab => state.send_key("Tab"),
+                    egui::Key::Escape => state.send_key("Escape"),
+                    egui::Key::ArrowUp => state.send_key("ArrowUp"),
+                    egui::Key::ArrowDown => state.send_key("ArrowDown"),
+                    egui::Key::ArrowLeft => state.send_key("ArrowLeft"),
+                    egui::Key::ArrowRight => state.send_key("ArrowRight"),
+                    egui::Key::Home => state.send_key("Home"),
+                    egui::Key::End => state.send_key("End"),
+                    egui::Key::Delete => state.send_key("Delete"),
+                    egui::Key::C if ctrl => state.send_input(b"\x03"),
+                    egui::Key::D if ctrl => state.send_input(b"\x04"),
+                    egui::Key::L if ctrl => state.send_input(b"\x0c"),
+                    _ => {}
+                },
                 _ => {}
             }
         }

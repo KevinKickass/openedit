@@ -1,6 +1,6 @@
+use crate::theme::EditorTheme;
 use egui::{self, Color32, Pos2, Rect, Ui, Vec2};
 use openedit_core::Document;
-use crate::theme::EditorTheme;
 
 /// Width of the minimap sidebar in pixels.
 const MINIMAP_WIDTH: f32 = 80.0;
@@ -54,8 +54,12 @@ pub fn render_minimap_with_scroll(
     let minimap_end = (minimap_start + max_minimap_lines).min(total_lines);
 
     // Viewport indicator
-    let vp_start = visible_start_line.max(minimap_start).saturating_sub(minimap_start);
-    let vp_end = visible_end_line.min(minimap_end).saturating_sub(minimap_start);
+    let vp_start = visible_start_line
+        .max(minimap_start)
+        .saturating_sub(minimap_start);
+    let vp_end = visible_end_line
+        .min(minimap_end)
+        .saturating_sub(minimap_start);
 
     let viewport_rect = Rect::from_min_max(
         Pos2::new(

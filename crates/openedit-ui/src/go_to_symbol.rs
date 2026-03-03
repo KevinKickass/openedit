@@ -41,10 +41,7 @@ fn fuzzy_match(query: &str, label: &str) -> bool {
 ///
 /// Returns `Some(line)` (0-based) when a symbol is selected and the dialog
 /// should navigate to that line. Returns `None` otherwise.
-pub fn render_go_to_symbol(
-    ctx: &egui::Context,
-    state: &mut GoToSymbolState,
-) -> Option<usize> {
+pub fn render_go_to_symbol(ctx: &egui::Context, state: &mut GoToSymbolState) -> Option<usize> {
     let filtered: Vec<&Symbol> = if state.query.is_empty() {
         state.symbols.iter().collect()
     } else {
@@ -113,55 +110,58 @@ pub fn render_go_to_symbol(
                 ui.label("No symbols found.");
             } else {
                 // Symbol list
-                egui::ScrollArea::vertical().max_height(250.0).show(ui, |ui| {
-                    for (i, sym) in filtered.iter().enumerate() {
-                        let is_selected = i == state.selected;
-                        let bg = if is_selected {
-                            egui::Color32::from_rgb(60, 60, 80)
-                        } else {
-                            egui::Color32::TRANSPARENT
-                        };
+                egui::ScrollArea::vertical()
+                    .max_height(250.0)
+                    .show(ui, |ui| {
+                        for (i, sym) in filtered.iter().enumerate() {
+                            let is_selected = i == state.selected;
+                            let bg = if is_selected {
+                                egui::Color32::from_rgb(60, 60, 80)
+                            } else {
+                                egui::Color32::TRANSPARENT
+                            };
 
-                        egui::Frame::none()
-                            .fill(bg)
-                            .inner_margin(egui::Margin::symmetric(8.0, 3.0))
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    // Kind label in a muted color
-                                    ui.label(
-                                        egui::RichText::new(sym.kind.label())
-                                            .weak()
-                                            .monospace(),
-                                    );
-                                    // Symbol name
-                                    ui.label(&sym.name);
-                                    // Line number on the right
-                                    ui.with_layout(
-                                        egui::Layout::right_to_left(egui::Align::Center),
-                                        |ui| {
-                                            ui.label(
-                                                egui::RichText::new(format!(
-                                                    ":{}", sym.line + 1
-                                                ))
-                                                .weak(),
-                                            );
-                                        },
-                                    );
+                            egui::Frame::none()
+                                .fill(bg)
+                                .inner_margin(egui::Margin::symmetric(8.0, 3.0))
+                                .show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        // Kind label in a muted color
+                                        ui.label(
+                                            egui::RichText::new(sym.kind.label())
+                                                .weak()
+                                                .monospace(),
+                                        );
+                                        // Symbol name
+                                        ui.label(&sym.name);
+                                        // Line number on the right
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                ui.label(
+                                                    egui::RichText::new(format!(
+                                                        ":{}",
+                                                        sym.line + 1
+                                                    ))
+                                                    .weak(),
+                                                );
+                                            },
+                                        );
+                                    });
                                 });
-                            });
 
-                        let rect = ui.min_rect();
-                        let response =
-                            ui.interact(rect, ui.id().with(("sym", i)), egui::Sense::click());
-                        if response.clicked() {
-                            result = Some(sym.line);
-                            state.open = false;
+                            let rect = ui.min_rect();
+                            let response =
+                                ui.interact(rect, ui.id().with(("sym", i)), egui::Sense::click());
+                            if response.clicked() {
+                                result = Some(sym.line);
+                                state.open = false;
+                            }
+                            if response.hovered() {
+                                state.selected = i;
+                            }
                         }
-                        if response.hovered() {
-                            state.selected = i;
-                        }
-                    }
-                });
+                    });
             }
         });
 

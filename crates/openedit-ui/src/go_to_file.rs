@@ -142,10 +142,7 @@ fn fuzzy_match_path(query: &str, path: &Path) -> bool {
 
 /// Render the "Go to File" dialog. Returns the absolute path of the selected file, if any.
 /// The caller must combine the returned relative path with the workspace root.
-pub fn render_go_to_file(
-    ctx: &egui::Context,
-    state: &mut GoToFileState,
-) -> Option<PathBuf> {
+pub fn render_go_to_file(ctx: &egui::Context, state: &mut GoToFileState) -> Option<PathBuf> {
     let max_visible = 20;
 
     let mut selected_path: Option<PathBuf> = None;
@@ -201,61 +198,61 @@ pub fn render_go_to_file(
             ui.label(egui::RichText::new(count_text).weak().small());
 
             // File list
-            egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
-                let visible_count = state.filtered.len().min(max_visible);
-                // Determine scroll window around selection
-                let scroll_start = if state.selected >= visible_count {
-                    state.selected - visible_count + 1
-                } else {
-                    0
-                };
-                let scroll_end = (scroll_start + max_visible).min(state.filtered.len());
-
-                for display_i in scroll_start..scroll_end {
-                    let file_idx = state.filtered[display_i];
-                    let path = &state.files[file_idx];
-                    let is_selected = display_i == state.selected;
-
-                    let bg = if is_selected {
-                        egui::Color32::from_rgb(60, 60, 80)
+            egui::ScrollArea::vertical()
+                .max_height(280.0)
+                .show(ui, |ui| {
+                    let visible_count = state.filtered.len().min(max_visible);
+                    // Determine scroll window around selection
+                    let scroll_start = if state.selected >= visible_count {
+                        state.selected - visible_count + 1
                     } else {
-                        egui::Color32::TRANSPARENT
+                        0
                     };
+                    let scroll_end = (scroll_start + max_visible).min(state.filtered.len());
 
-                    let frame_response = egui::Frame::none()
-                        .fill(bg)
-                        .inner_margin(egui::Margin::symmetric(8.0, 3.0))
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                // File name (bold)
-                                let file_name = path
-                                    .file_name()
-                                    .unwrap_or_default()
-                                    .to_string_lossy();
-                                ui.label(egui::RichText::new(file_name.as_ref()).strong());
+                    for display_i in scroll_start..scroll_end {
+                        let file_idx = state.filtered[display_i];
+                        let path = &state.files[file_idx];
+                        let is_selected = display_i == state.selected;
 
-                                // Relative directory path (dimmed)
-                                if let Some(parent) = path.parent() {
-                                    let parent_str = parent.to_string_lossy();
-                                    if !parent_str.is_empty() {
-                                        ui.label(
-                                            egui::RichText::new(parent_str.as_ref()).weak(),
-                                        );
+                        let bg = if is_selected {
+                            egui::Color32::from_rgb(60, 60, 80)
+                        } else {
+                            egui::Color32::TRANSPARENT
+                        };
+
+                        let frame_response = egui::Frame::none()
+                            .fill(bg)
+                            .inner_margin(egui::Margin::symmetric(8.0, 3.0))
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    // File name (bold)
+                                    let file_name =
+                                        path.file_name().unwrap_or_default().to_string_lossy();
+                                    ui.label(egui::RichText::new(file_name.as_ref()).strong());
+
+                                    // Relative directory path (dimmed)
+                                    if let Some(parent) = path.parent() {
+                                        let parent_str = parent.to_string_lossy();
+                                        if !parent_str.is_empty() {
+                                            ui.label(
+                                                egui::RichText::new(parent_str.as_ref()).weak(),
+                                            );
+                                        }
                                     }
-                                }
+                                });
                             });
-                        });
 
-                    let response = frame_response.response.interact(egui::Sense::click());
-                    if response.clicked() {
-                        selected_path = Some(state.files[file_idx].clone());
-                        state.open = false;
+                        let response = frame_response.response.interact(egui::Sense::click());
+                        if response.clicked() {
+                            selected_path = Some(state.files[file_idx].clone());
+                            state.open = false;
+                        }
+                        if response.hovered() {
+                            state.selected = display_i;
+                        }
                     }
-                    if response.hovered() {
-                        state.selected = display_i;
-                    }
-                }
-            });
+                });
         });
 
     state.open = open;
@@ -282,7 +279,10 @@ mod tests {
 
     #[test]
     fn test_fuzzy_match_path_exact() {
-        assert!(fuzzy_match_path("lib.rs", Path::new("crates/core/src/lib.rs")));
+        assert!(fuzzy_match_path(
+            "lib.rs",
+            Path::new("crates/core/src/lib.rs")
+        ));
     }
 
     #[test]

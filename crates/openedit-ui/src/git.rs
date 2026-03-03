@@ -79,9 +79,10 @@ impl GitManager {
             Ok(repo) => {
                 self.repo_root = repo.workdir().map(|p| p.to_path_buf());
                 // Get branch name
-                self.branch = repo.head().ok().and_then(|h| {
-                    h.shorthand().map(|s| s.to_string())
-                });
+                self.branch = repo
+                    .head()
+                    .ok()
+                    .and_then(|h| h.shorthand().map(|s| s.to_string()));
                 self.refresh_statuses();
             }
             Err(_) => {
@@ -112,19 +113,24 @@ impl GitManager {
         let Some(repo) = self.open_repo() else { return };
 
         // Update branch
-        self.branch = repo.head().ok().and_then(|h| {
-            h.shorthand().map(|s| s.to_string())
-        });
+        self.branch = repo
+            .head()
+            .ok()
+            .and_then(|h| h.shorthand().map(|s| s.to_string()));
 
         let mut opts = git2::StatusOptions::new();
         opts.include_untracked(true)
             .recurse_untracked_dirs(true)
             .include_ignored(false);
 
-        let Ok(statuses) = repo.statuses(Some(&mut opts)) else { return };
+        let Ok(statuses) = repo.statuses(Some(&mut opts)) else {
+            return;
+        };
 
         for entry in statuses.iter() {
-            let Some(path_str) = entry.path() else { continue };
+            let Some(path_str) = entry.path() else {
+                continue;
+            };
             let status = entry.status();
             let root = self.repo_root.as_ref().unwrap();
             let full_path = root.join(path_str);
@@ -167,7 +173,9 @@ impl GitManager {
     }
 
     fn open_repo(&self) -> Option<git2::Repository> {
-        self.repo_root.as_ref().and_then(|root| git2::Repository::open(root).ok())
+        self.repo_root
+            .as_ref()
+            .and_then(|root| git2::Repository::open(root).ok())
     }
 
     /// Compute line-level diffs for a file (working tree vs HEAD).
@@ -223,18 +231,25 @@ impl GitManager {
         self.blame_info.clear();
         let Some(repo) = self.open_repo() else { return };
         let Some(root) = &self.repo_root else { return };
-        let Ok(rel_path) = file_path.strip_prefix(root) else { return };
+        let Ok(rel_path) = file_path.strip_prefix(root) else {
+            return;
+        };
 
-        let Ok(blame) = repo.blame_file(rel_path, None) else { return };
+        let Ok(blame) = repo.blame_file(rel_path, None) else {
+            return;
+        };
 
         for hunk_idx in 0..blame.len() {
-            let Some(hunk) = blame.get_index(hunk_idx) else { continue };
+            let Some(hunk) = blame.get_index(hunk_idx) else {
+                continue;
+            };
             let sig = hunk.final_signature();
             let author = sig.name().unwrap_or("?");
             let start_line = hunk.final_start_line().saturating_sub(1);
             let line_count = hunk.lines_in_hunk();
             for offset in 0..line_count {
-                self.blame_info.insert(start_line + offset, author.to_string());
+                self.blame_info
+                    .insert(start_line + offset, author.to_string());
             }
         }
     }
@@ -378,7 +393,10 @@ pub fn render_git_gutter_mark(
     if status == LineDiffStatus::Removed {
         let mid_y = y + line_height / 2.0;
         ui.painter().line_segment(
-            [egui::Pos2::new(x, mid_y - 3.0), egui::Pos2::new(x, mid_y + 3.0)],
+            [
+                egui::Pos2::new(x, mid_y - 3.0),
+                egui::Pos2::new(x, mid_y + 3.0),
+            ],
             egui::Stroke::new(width, color),
         );
     } else {
@@ -421,7 +439,9 @@ mod tests {
         let new = vec!["a", "b", "c"];
         let result = compute_line_diff(&old, &new);
         assert!(!result.is_empty());
-        assert!(result.iter().any(|&(l, s)| l == 1 && s == LineDiffStatus::Added));
+        assert!(result
+            .iter()
+            .any(|&(l, s)| l == 1 && s == LineDiffStatus::Added));
     }
 
     #[test]
@@ -439,7 +459,9 @@ mod tests {
         let new = vec!["a", "x", "c"];
         let result = compute_line_diff(&old, &new);
         assert!(!result.is_empty());
-        assert!(result.iter().any(|&(l, s)| l == 1 && s == LineDiffStatus::Modified));
+        assert!(result
+            .iter()
+            .any(|&(l, s)| l == 1 && s == LineDiffStatus::Modified));
     }
 
     #[test]

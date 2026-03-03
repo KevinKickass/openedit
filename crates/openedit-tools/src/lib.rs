@@ -1,7 +1,7 @@
-pub mod sort;
 pub mod case;
 pub mod hash;
 pub mod lines;
+pub mod sort;
 pub mod transform;
 
 /// A text transformation tool operates on a string and produces a new string.

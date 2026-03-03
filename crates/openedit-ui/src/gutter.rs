@@ -32,8 +32,7 @@ pub fn render_gutter(
     );
 
     // Draw gutter background
-    ui.painter()
-        .rect_filled(gutter_rect, 0.0, theme.gutter_bg);
+    ui.painter().rect_filled(gutter_rect, 0.0, theme.gutter_bg);
 
     // Draw line numbers and fold indicators
     let font_id = egui::FontId::monospace(font_size);
@@ -81,11 +80,8 @@ pub fn render_gutter(
             let radius = font_size * 0.22;
             let cx = gutter_rect.left() + 4.0 + radius;
             let cy = y + line_height * 0.5;
-            ui.painter().circle_filled(
-                Pos2::new(cx, cy),
-                radius,
-                bookmark_color,
-            );
+            ui.painter()
+                .circle_filled(Pos2::new(cx, cy), radius, bookmark_color);
         }
     }
 

@@ -6,7 +6,7 @@ use crate::macro_recorder::{MacroAction, MacroRecorder};
 use crate::theme::EditorTheme;
 use egui::{self, Pos2, Rect, Ui, Vec2};
 use openedit_core::cursor::Position;
-use openedit_core::syntax::{SyntaxEngine, HighlightSpan};
+use openedit_core::syntax::{HighlightSpan, SyntaxEngine};
 use openedit_core::Document;
 
 /// A visual row in the editor, mapping a screen row to a logical line + column offset.
@@ -118,18 +118,30 @@ pub fn render_editor(
             let display = line_str.trim_end_matches(&['\n', '\r'][..]);
             let char_count = display.chars().count();
             if char_count == 0 {
-                all_visual_rows.push(VisualRow { line_idx, col_offset: 0, is_first: true });
+                all_visual_rows.push(VisualRow {
+                    line_idx,
+                    col_offset: 0,
+                    is_first: true,
+                });
             } else {
                 let mut offset = 0;
                 let mut first = true;
                 while offset < char_count {
-                    all_visual_rows.push(VisualRow { line_idx, col_offset: offset, is_first: first });
+                    all_visual_rows.push(VisualRow {
+                        line_idx,
+                        col_offset: offset,
+                        is_first: first,
+                    });
                     offset += wrap_cols;
                     first = false;
                 }
             }
         } else {
-            all_visual_rows.push(VisualRow { line_idx, col_offset: 0, is_first: true });
+            all_visual_rows.push(VisualRow {
+                line_idx,
+                col_offset: 0,
+                is_first: true,
+            });
         }
     }
     let total_visual_rows = all_visual_rows.len();
@@ -157,17 +169,27 @@ pub fn render_editor(
 
     // Helper: map (line, col) to screen row (accounting for wrapping)
     let pos_to_screen_row = |line: usize, col: usize| -> Option<usize> {
-        displayed_vrows.iter().find(|(_, vr)| {
-            if vr.line_idx != line { return false; }
-            if !word_wrap { return true; }
-            let next_offset = vr.col_offset + wrap_cols;
-            col >= vr.col_offset && col < next_offset
-        }).map(|&(r, _)| r)
+        displayed_vrows
+            .iter()
+            .find(|(_, vr)| {
+                if vr.line_idx != line {
+                    return false;
+                }
+                if !word_wrap {
+                    return true;
+                }
+                let next_offset = vr.col_offset + wrap_cols;
+                col >= vr.col_offset && col < next_offset
+            })
+            .map(|&(r, _)| r)
     };
 
     // Helper: map line to first screen row
     let _line_to_screen_row = |line: usize| -> Option<usize> {
-        displayed_vrows.iter().find(|(_, vr)| vr.line_idx == line && vr.is_first).map(|&(r, _)| r)
+        displayed_vrows
+            .iter()
+            .find(|(_, vr)| vr.line_idx == line && vr.is_first)
+            .map(|&(r, _)| r)
     };
 
     // Gutter (with fold indicators)
@@ -191,7 +213,10 @@ pub fn render_editor(
         if vr.line_idx == current_line {
             let y = rect.top() + screen_row as f32 * line_height;
             ui.painter().rect_filled(
-                Rect::from_min_size(Pos2::new(text_left, y), Vec2::new(rect.width() - gutter_width, line_height)),
+                Rect::from_min_size(
+                    Pos2::new(text_left, y),
+                    Vec2::new(rect.width() - gutter_width, line_height),
+                ),
                 0.0,
                 theme.current_line_bg,
             );
@@ -214,7 +239,8 @@ pub fn render_editor(
                     Pos2::new(rect.left(), y),
                     Vec2::new(rect.width(), line_height),
                 );
-                ui.painter().rect_filled(line_rect, 0.0, theme.current_line_bg);
+                ui.painter()
+                    .rect_filled(line_rect, 0.0, theme.current_line_bg);
             }
         }
     }
@@ -234,8 +260,14 @@ pub fn render_editor(
                 };
                 // Find the visual row(s) containing this match
                 for &(screen_row, vr) in &displayed_vrows {
-                    if vr.line_idx != start_pos.0 { continue; }
-                    let vr_end = if word_wrap { vr.col_offset + wrap_cols } else { usize::MAX };
+                    if vr.line_idx != start_pos.0 {
+                        continue;
+                    }
+                    let vr_end = if word_wrap {
+                        vr.col_offset + wrap_cols
+                    } else {
+                        usize::MAX
+                    };
                     // Check if any part of the match is in this visual row
                     if start_pos.1 < vr_end && end_pos.1 > vr.col_offset {
                         let y = rect.top() + screen_row as f32 * line_height;
@@ -257,7 +289,20 @@ pub fn render_editor(
     // Render selections for all cursors
     for cursor in doc.cursors.cursors() {
         if let Some((sel_start, sel_end)) = cursor.selection_range() {
-            render_selection_wrapped(ui, &sel_start, &sel_end, &displayed_vrows, text_left, rect, doc, theme, line_height, char_width, word_wrap, wrap_cols);
+            render_selection_wrapped(
+                ui,
+                &sel_start,
+                &sel_end,
+                &displayed_vrows,
+                text_left,
+                rect,
+                doc,
+                theme,
+                line_height,
+                char_width,
+                word_wrap,
+                wrap_cols,
+            );
         }
     }
 
@@ -275,7 +320,10 @@ pub fn render_editor(
 
     // Render text lines (with syntax highlighting), only displayed visual rows
     let ws_color = egui::Color32::from_rgba_premultiplied(
-        theme.gutter_fg.r(), theme.gutter_fg.g(), theme.gutter_fg.b(), 140,
+        theme.gutter_fg.r(),
+        theme.gutter_fg.g(),
+        theme.gutter_fg.b(),
+        140,
     );
     let fold_ellipsis_color = theme.gutter_fg;
 
@@ -297,7 +345,11 @@ pub fn render_editor(
         let spans = line_highlights.get(vr.line_idx);
         if spans.map_or(true, |s| s.is_empty()) {
             // No syntax highlighting -- render plain text
-            let visible_text: String = display.chars().skip(visible_text_start).take(visible_text_end - visible_text_start).collect();
+            let visible_text: String = display
+                .chars()
+                .skip(visible_text_start)
+                .take(visible_text_end - visible_text_start)
+                .collect();
             ui.painter().text(
                 Pos2::new(text_left + 4.0, y),
                 egui::Align2::LEFT_TOP,
@@ -307,8 +359,15 @@ pub fn render_editor(
             );
         } else {
             render_highlighted_line(
-                ui, display, visible_text_start, spans.unwrap(),
-                text_left, y, &font_id, theme, char_width,
+                ui,
+                display,
+                visible_text_start,
+                spans.unwrap(),
+                text_left,
+                y,
+                &font_id,
+                theme,
+                char_width,
                 if word_wrap { Some(wrap_cols) } else { None },
             );
         }
@@ -316,7 +375,11 @@ pub fn render_editor(
         // Fold ellipsis only on first visual row
         if vr.is_first && doc.folding.is_folded(vr.line_idx) {
             let display_len = display.chars().count();
-            let ellipsis_col = if display_len > visible_text_start { display_len - visible_text_start } else { 0 };
+            let ellipsis_col = if display_len > visible_text_start {
+                display_len - visible_text_start
+            } else {
+                0
+            };
             let ellipsis_x = text_left + 4.0 + ellipsis_col as f32 * char_width + char_width;
             ui.painter().text(
                 Pos2::new(ellipsis_x, y),
@@ -334,8 +397,8 @@ pub fn render_editor(
                     continue;
                 }
                 let symbol = match ch {
-                    ' ' => "\u{00B7}",   // middle dot
-                    '\t' => "\u{2192}",  // rightwards arrow
+                    ' ' => "\u{00B7}",  // middle dot
+                    '\t' => "\u{2192}", // rightwards arrow
                     _ => continue,
                 };
                 let x = text_left + 4.0 + (i - visible_text_start) as f32 * char_width;
@@ -352,19 +415,24 @@ pub fn render_editor(
 
     // Rainbow indent guide colors
     const INDENT_COLORS: [egui::Color32; 6] = [
-        egui::Color32::from_rgba_premultiplied(255, 215, 0, 40),    // Gold
-        egui::Color32::from_rgba_premultiplied(218, 112, 214, 40),  // Orchid
-        egui::Color32::from_rgba_premultiplied(0, 191, 255, 40),    // Sky blue
-        egui::Color32::from_rgba_premultiplied(255, 165, 0, 40),    // Orange
-        egui::Color32::from_rgba_premultiplied(50, 205, 50, 40),    // Lime
-        egui::Color32::from_rgba_premultiplied(255, 105, 180, 40),  // Pink
+        egui::Color32::from_rgba_premultiplied(255, 215, 0, 40), // Gold
+        egui::Color32::from_rgba_premultiplied(218, 112, 214, 40), // Orchid
+        egui::Color32::from_rgba_premultiplied(0, 191, 255, 40), // Sky blue
+        egui::Color32::from_rgba_premultiplied(255, 165, 0, 40), // Orange
+        egui::Color32::from_rgba_premultiplied(50, 205, 50, 40), // Lime
+        egui::Color32::from_rgba_premultiplied(255, 105, 180, 40), // Pink
     ];
     let indent_guide_line_color = egui::Color32::from_rgba_premultiplied(
-        theme.gutter_fg.r(), theme.gutter_fg.g(), theme.gutter_fg.b(), 60,
+        theme.gutter_fg.r(),
+        theme.gutter_fg.g(),
+        theme.gutter_fg.b(),
+        60,
     );
     let tab_size = 4usize;
     for &(screen_row, vr) in &displayed_vrows {
-        if !vr.is_first { continue; }
+        if !vr.is_first {
+            continue;
+        }
         let line = doc.buffer.line(vr.line_idx);
         let line_str = line.to_string();
         let display = line_str.trim_end_matches(&['\n', '\r'][..]);
@@ -398,9 +466,18 @@ pub fn render_editor(
         if !ctx.git_line_diffs.is_empty() {
             let gutter_right_x = rect.left() + gutter_width_est;
             for &(screen_row, vr) in &displayed_vrows {
-                if !vr.is_first { continue; }
+                if !vr.is_first {
+                    continue;
+                }
                 let y = rect.top() + screen_row as f32 * line_height;
-                git::render_git_gutter_mark(ui, ctx.git_line_diffs, vr.line_idx, gutter_right_x, y, line_height);
+                git::render_git_gutter_mark(
+                    ui,
+                    ctx.git_line_diffs,
+                    vr.line_idx,
+                    gutter_right_x,
+                    y,
+                    line_height,
+                );
             }
         }
 
@@ -409,7 +486,9 @@ pub fn render_editor(
             let blame_font = egui::FontId::monospace(font_size * 0.85);
             let blame_color = egui::Color32::from_rgba_premultiplied(120, 120, 120, 160);
             for &(screen_row, vr) in &displayed_vrows {
-                if !vr.is_first { continue; }
+                if !vr.is_first {
+                    continue;
+                }
                 if let Some(author) = ctx.git_blame_info.get(&vr.line_idx) {
                     let y = rect.top() + screen_row as f32 * line_height;
                     // Place blame text far right
@@ -431,11 +510,19 @@ pub fn render_editor(
         // LSP diagnostic squiggles
         if !ctx.lsp_diagnostics.is_empty() {
             for &(screen_row, vr) in &displayed_vrows {
-                if !vr.is_first { continue; }
+                if !vr.is_first {
+                    continue;
+                }
                 let y = rect.top() + screen_row as f32 * line_height;
                 lsp::render_diagnostic_squiggles(
-                    ui, ctx.lsp_diagnostics, vr.line_idx,
-                    text_left, y, line_height, char_width, scroll_col,
+                    ui,
+                    ctx.lsp_diagnostics,
+                    vr.line_idx,
+                    text_left,
+                    y,
+                    line_height,
+                    char_width,
+                    scroll_col,
                 );
             }
         }
@@ -452,12 +539,21 @@ pub fn render_editor(
             })
             .collect();
         let all_refs: Vec<&str> = all_line_strs.iter().map(|s| s.as_str()).collect();
-        let first_vis = displayed_vrows.first().map(|&(_, vr)| vr.line_idx).unwrap_or(0);
-        let last_vis = displayed_vrows.last().map(|&(_, vr)| vr.line_idx + 1).unwrap_or(0);
+        let first_vis = displayed_vrows
+            .first()
+            .map(|&(_, vr)| vr.line_idx)
+            .unwrap_or(0);
+        let last_vis = displayed_vrows
+            .last()
+            .map(|&(_, vr)| vr.line_idx + 1)
+            .unwrap_or(0);
         let colored = bracket_colors::colorize_brackets(&all_refs, first_vis, last_vis);
         for (line_idx, brackets) in &colored {
             // Find the screen row for this line
-            if let Some(&(screen_row, _vr)) = displayed_vrows.iter().find(|(_, vr)| vr.line_idx == *line_idx && vr.is_first) {
+            if let Some(&(screen_row, _vr)) = displayed_vrows
+                .iter()
+                .find(|(_, vr)| vr.line_idx == *line_idx && vr.is_first)
+            {
                 let y = rect.top() + screen_row as f32 * line_height;
                 let line_str = &all_line_strs[*line_idx];
                 bracket_colors::render_bracket_colors(
@@ -480,23 +576,32 @@ pub fn render_editor(
                     bp.col - scroll_col
                 };
                 let x = text_left + 4.0 + col_in_row as f32 * char_width;
-                let bracket_rect = Rect::from_min_size(
-                    Pos2::new(x, y),
-                    Vec2::new(char_width, line_height),
-                );
+                let bracket_rect =
+                    Rect::from_min_size(Pos2::new(x, y), Vec2::new(char_width, line_height));
                 ui.painter().rect_filled(bracket_rect, 2.0, bracket_color);
             }
         }
     }
 
     // Minimap
-    let first_actual = displayed_vrows.first().map(|&(_, vr)| vr.line_idx).unwrap_or(0);
-    let last_actual = displayed_vrows.last().map(|&(_, vr)| vr.line_idx + 1).unwrap_or(total_lines).min(total_lines);
+    let first_actual = displayed_vrows
+        .first()
+        .map(|&(_, vr)| vr.line_idx)
+        .unwrap_or(0);
+    let last_actual = displayed_vrows
+        .last()
+        .map(|&(_, vr)| vr.line_idx + 1)
+        .unwrap_or(total_lines)
+        .min(total_lines);
     let mut minimap_scroll_target = None;
     if show_minimap {
         let (_, scroll_target) = crate::minimap::render_minimap_with_scroll(
-            ui, doc, theme, rect,
-            first_actual, last_actual,
+            ui,
+            doc,
+            theme,
+            rect,
+            first_actual,
+            last_actual,
             visible_lines,
             font_size,
         );
@@ -519,11 +624,9 @@ pub fn render_editor(
                 pos.col - scroll_col
             };
             let x = text_left + 4.0 + col_in_row as f32 * char_width;
-            let cursor_rect = Rect::from_min_size(
-                Pos2::new(x, y),
-                Vec2::new(2.0, line_height),
-            );
-            ui.painter().rect_filled(cursor_rect, 0.0, theme.cursor_color);
+            let cursor_rect = Rect::from_min_size(Pos2::new(x, y), Vec2::new(2.0, line_height));
+            ui.painter()
+                .rect_filled(cursor_rect, 0.0, theme.cursor_color);
         }
     }
 
@@ -544,7 +647,10 @@ pub fn render_editor(
             .find(|(r, _)| *r == screen_row)
             .map(|&(_, vr)| (vr.line_idx, vr.col_offset))
             .unwrap_or_else(|| {
-                displayed_vrows.last().map(|&(_, vr)| (vr.line_idx, vr.col_offset)).unwrap_or((0, 0))
+                displayed_vrows
+                    .last()
+                    .map(|&(_, vr)| (vr.line_idx, vr.col_offset))
+                    .unwrap_or((0, 0))
             });
         let raw_col = (((pos.x - text_left - 4.0) / char_width).round() as isize).max(0) as usize;
         let col = col_offset + raw_col + (if word_wrap { 0 } else { scroll_col });
@@ -598,7 +704,8 @@ pub fn render_editor(
     }
 
     // Scroll
-    let (scroll_delta, ctrl_held) = ui.input(|i| (i.raw_scroll_delta, i.modifiers.ctrl || i.modifiers.mac_cmd));
+    let (scroll_delta, ctrl_held) =
+        ui.input(|i| (i.raw_scroll_delta, i.modifiers.ctrl || i.modifiers.mac_cmd));
     if scroll_delta.y != 0.0 && !ctrl_held {
         let lines_delta = -(scroll_delta.y / line_height * 3.0) as isize;
         let new_scroll = (doc.scroll_line as isize + lines_delta)
@@ -776,10 +883,22 @@ fn render_selection_wrapped(
         }
 
         let line_len = doc.buffer.line_len_chars_no_newline(vr.line_idx);
-        let vr_end = if word_wrap { (vr.col_offset + wrap_cols).min(line_len) } else { line_len };
+        let vr_end = if word_wrap {
+            (vr.col_offset + wrap_cols).min(line_len)
+        } else {
+            line_len
+        };
 
-        let sel_line_start = if vr.line_idx == sel_start.line { sel_start.col } else { 0 };
-        let sel_line_end = if vr.line_idx == sel_end.line { sel_end.col } else { line_len };
+        let sel_line_start = if vr.line_idx == sel_start.line {
+            sel_start.col
+        } else {
+            0
+        };
+        let sel_line_end = if vr.line_idx == sel_end.line {
+            sel_end.col
+        } else {
+            line_len
+        };
 
         // Clamp selection to this visual row's range
         let start_col = sel_line_start.max(vr.col_offset);
@@ -822,9 +941,7 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
         for event in &input.events {
             match event {
                 egui::Event::Key {
-                    key,
-                    pressed: true,
-                    ..
+                    key, pressed: true, ..
                 } => {
                     // Helper: create a key name string from egui::Key
                     let key_name = format!("{:?}", key);
@@ -839,7 +956,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -853,7 +972,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -864,7 +985,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -874,7 +997,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -884,7 +1009,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -894,7 +1021,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -903,7 +1032,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -912,7 +1043,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -921,7 +1054,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -930,7 +1065,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -939,7 +1076,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -948,7 +1087,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -957,7 +1098,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -966,7 +1109,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -975,7 +1120,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -984,7 +1131,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -993,7 +1142,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -1004,7 +1155,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -1014,7 +1167,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -1024,7 +1179,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -1034,7 +1191,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -1044,7 +1203,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -1054,7 +1215,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -1064,7 +1227,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -1074,7 +1239,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -1083,7 +1250,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -1092,7 +1261,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -1101,7 +1272,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -1111,7 +1284,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -1120,7 +1295,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -1134,7 +1311,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
-                                    ctrl, shift, alt,
+                                    ctrl,
+                                    shift,
+                                    alt,
                                 });
                             }
                         }
@@ -1168,7 +1347,9 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             } {
                                 // If the character after cursor is the same closing char, skip it
                                 let cursor = doc.cursors.primary();
-                                let offset = doc.buffer.line_col_to_char(cursor.position.line, cursor.position.col);
+                                let offset = doc
+                                    .buffer
+                                    .line_col_to_char(cursor.position.line, cursor.position.col);
                                 let next_char = if offset < doc.buffer.len_chars() {
                                     Some(doc.buffer.char_at(offset))
                                 } else {
@@ -1194,7 +1375,10 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             } else if let Some(_) = match ch {
                                 ')' | ']' | '}' => {
                                     let cursor = doc.cursors.primary();
-                                    let offset = doc.buffer.line_col_to_char(cursor.position.line, cursor.position.col);
+                                    let offset = doc.buffer.line_col_to_char(
+                                        cursor.position.line,
+                                        cursor.position.col,
+                                    );
                                     let next_char = if offset < doc.buffer.len_chars() {
                                         Some(doc.buffer.char_at(offset))
                                     } else {
@@ -1244,16 +1428,36 @@ fn find_matching_bracket(doc: &Document, cursor_pos: &Position) -> Option<Positi
     let total = doc.buffer.len_chars();
 
     // Check character at cursor and character before cursor
-    let at_cursor = if offset < total { Some(doc.buffer.char_at(offset)) } else { None };
-    let before_cursor = if offset > 0 { Some(doc.buffer.char_at(offset - 1)) } else { None };
+    let at_cursor = if offset < total {
+        Some(doc.buffer.char_at(offset))
+    } else {
+        None
+    };
+    let before_cursor = if offset > 0 {
+        Some(doc.buffer.char_at(offset - 1))
+    } else {
+        None
+    };
 
     // Try character at cursor first, then before cursor
     let (check_offset, ch) = if let Some(c) = at_cursor {
-        if is_bracket(c) { (offset, c) } else if let Some(c2) = before_cursor {
-            if is_bracket(c2) { (offset - 1, c2) } else { return None; }
-        } else { return None; }
+        if is_bracket(c) {
+            (offset, c)
+        } else if let Some(c2) = before_cursor {
+            if is_bracket(c2) {
+                (offset - 1, c2)
+            } else {
+                return None;
+            }
+        } else {
+            return None;
+        }
     } else if let Some(c) = before_cursor {
-        if is_bracket(c) { (offset - 1, c) } else { return None; }
+        if is_bracket(c) {
+            (offset - 1, c)
+        } else {
+            return None;
+        }
     } else {
         return None;
     };
@@ -1272,8 +1476,12 @@ fn find_matching_bracket(doc: &Document, cursor_pos: &Position) -> Option<Positi
     if forward {
         for i in check_offset..total {
             let c = doc.buffer.char_at(i);
-            if c == open { depth += 1; }
-            if c == close { depth -= 1; }
+            if c == open {
+                depth += 1;
+            }
+            if c == close {
+                depth -= 1;
+            }
             if depth == 0 {
                 let (line, col) = doc.buffer.char_to_line_col(i);
                 return Some(Position::new(line, col));
@@ -1283,8 +1491,12 @@ fn find_matching_bracket(doc: &Document, cursor_pos: &Position) -> Option<Positi
         let mut i = check_offset as isize;
         while i >= 0 {
             let c = doc.buffer.char_at(i as usize);
-            if c == close { depth += 1; }
-            if c == open { depth -= 1; }
+            if c == close {
+                depth += 1;
+            }
+            if c == open {
+                depth -= 1;
+            }
             if depth == 0 {
                 let (line, col) = doc.buffer.char_to_line_col(i as usize);
                 return Some(Position::new(line, col));

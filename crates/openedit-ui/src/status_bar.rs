@@ -94,7 +94,14 @@ pub fn render_status_bar(
 
     // Git branch indicator
     if let Some(branch) = git_branch {
-        let git_x = bar_rect.left() + if doc.read_only { 440.0 } else if macro_recording { 390.0 } else { 340.0 };
+        let git_x = bar_rect.left()
+            + if doc.read_only {
+                440.0
+            } else if macro_recording {
+                390.0
+            } else {
+                340.0
+            };
         let branch_text = format!("⎇ {}", branch);
         ui.painter().text(
             egui::Pos2::new(git_x, bar_rect.center().y),
@@ -141,7 +148,9 @@ pub fn render_status_bar(
     let lang = doc.language.as_deref().unwrap_or("Plain Text");
     let lang_resp = child.add(
         egui::Button::new(
-            egui::RichText::new(lang).font(font.clone()).color(theme.status_bar_fg),
+            egui::RichText::new(lang)
+                .font(font.clone())
+                .color(theme.status_bar_fg),
         )
         .frame(false),
     );
@@ -164,7 +173,9 @@ pub fn render_status_bar(
     let le = doc.line_ending.display_name();
     let le_resp = child.add(
         egui::Button::new(
-            egui::RichText::new(le).font(font.clone()).color(theme.status_bar_fg),
+            egui::RichText::new(le)
+                .font(font.clone())
+                .color(theme.status_bar_fg),
         )
         .frame(false),
     );
@@ -189,7 +200,9 @@ pub fn render_status_bar(
     let enc = doc.encoding.display_name();
     let enc_resp = child.add(
         egui::Button::new(
-            egui::RichText::new(enc).font(font.clone()).color(theme.status_bar_fg),
+            egui::RichText::new(enc)
+                .font(font.clone())
+                .color(theme.status_bar_fg),
         )
         .frame(false),
     );

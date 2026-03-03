@@ -14,11 +14,7 @@ pub struct SearchPanelState {
 }
 
 /// Render the search/replace panel. Returns true if it should be closed.
-pub fn render_search_panel(
-    ui: &mut Ui,
-    state: &mut SearchPanelState,
-    doc: &mut Document,
-) -> bool {
+pub fn render_search_panel(ui: &mut Ui, state: &mut SearchPanelState, doc: &mut Document) -> bool {
     let mut close = false;
 
     egui::Frame::none()
@@ -45,17 +41,20 @@ pub fn render_search_panel(
                 ui.label(format!("{}/{}", current, count));
 
                 // Prev/Next buttons
-                if ui.button("\u{25B2}").on_hover_text("Previous (Shift+F3)").clicked() {
+                if ui
+                    .button("\u{25B2}")
+                    .on_hover_text("Previous (Shift+F3)")
+                    .clicked()
+                {
                     let offset = doc.buffer.line_col_to_char(
                         doc.cursors.primary().position.line,
                         doc.cursors.primary().position.col,
                     );
                     if let Some(m) = doc.search.find_prev(offset) {
                         let (line, col) = doc.buffer.char_to_line_col(m.start);
-                        doc.cursors.primary_mut().move_to(
-                            openedit_core::cursor::Position::new(line, col),
-                            false,
-                        );
+                        doc.cursors
+                            .primary_mut()
+                            .move_to(openedit_core::cursor::Position::new(line, col), false);
                     }
                 }
 
@@ -66,10 +65,9 @@ pub fn render_search_panel(
                     );
                     if let Some(m) = doc.search.find_next(offset + 1) {
                         let (line, col) = doc.buffer.char_to_line_col(m.start);
-                        doc.cursors.primary_mut().move_to(
-                            openedit_core::cursor::Position::new(line, col),
-                            false,
-                        );
+                        doc.cursors
+                            .primary_mut()
+                            .move_to(openedit_core::cursor::Position::new(line, col), false);
                     }
                 }
 
@@ -113,7 +111,8 @@ pub fn render_search_panel(
                     if ui.button("Replace All").clicked() {
                         let matches = doc.search.matches.clone();
                         let text = doc.buffer.to_string();
-                        let new_text = openedit_core::search::replace_all(&text, &matches, &state.replace);
+                        let new_text =
+                            openedit_core::search::replace_all(&text, &matches, &state.replace);
                         doc.buffer = openedit_core::Buffer::from_str(&new_text);
                         doc.modified = true;
                         // Re-search

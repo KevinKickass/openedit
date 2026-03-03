@@ -117,32 +117,23 @@ pub fn render_function_list(
                         ui.add_space(4.0);
 
                         // Symbol name
-                        ui.label(
-                            egui::RichText::new(&sym.name)
-                                .color(theme.foreground),
-                        );
+                        ui.label(egui::RichText::new(&sym.name).color(theme.foreground));
 
                         // Line number on the right
-                        ui.with_layout(
-                            egui::Layout::right_to_left(egui::Align::Center),
-                            |ui| {
-                                ui.add_space(8.0);
-                                ui.label(
-                                    egui::RichText::new(format!(":{}", sym.line + 1))
-                                        .weak()
-                                        .small(),
-                                );
-                            },
-                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.add_space(8.0);
+                            ui.label(
+                                egui::RichText::new(format!(":{}", sym.line + 1))
+                                    .weak()
+                                    .small(),
+                            );
+                        });
                     });
 
                     // Click detection on the row
                     let row_rect = response.response.rect;
-                    let interact = ui.interact(
-                        row_rect,
-                        ui.id().with(("fnlist", i)),
-                        egui::Sense::click(),
-                    );
+                    let interact =
+                        ui.interact(row_rect, ui.id().with(("fnlist", i)), egui::Sense::click());
                     if interact.clicked() {
                         clicked_line = Some(sym.line);
                     }
@@ -167,12 +158,12 @@ fn kind_color(kind_label: &str, theme: &EditorTheme) -> egui::Color32 {
     // Use different tints based on the kind
     let _ = theme; // keep param for future theming
     match kind_label {
-        "fn" | "method" => egui::Color32::from_rgb(86, 156, 214),   // blue
+        "fn" | "method" => egui::Color32::from_rgb(86, 156, 214), // blue
         "class" | "struct" => egui::Color32::from_rgb(78, 201, 176), // teal
-        "enum" => egui::Color32::from_rgb(184, 215, 163),           // green
-        "trait" => egui::Color32::from_rgb(197, 134, 192),          // purple
-        "mod" => egui::Color32::from_rgb(220, 220, 170),            // yellow
-        "const" | "var" => egui::Color32::from_rgb(156, 220, 254),  // light blue
-        _ => egui::Color32::from_rgb(180, 180, 180),                // gray
+        "enum" => egui::Color32::from_rgb(184, 215, 163),         // green
+        "trait" => egui::Color32::from_rgb(197, 134, 192),        // purple
+        "mod" => egui::Color32::from_rgb(220, 220, 170),          // yellow
+        "const" | "var" => egui::Color32::from_rgb(156, 220, 254), // light blue
+        _ => egui::Color32::from_rgb(180, 180, 180),              // gray
     }
 }

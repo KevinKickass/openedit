@@ -109,7 +109,13 @@ fn start_search(state: &mut FindInFilesState) {
     state.result_rx = Some(rx);
 
     thread::spawn(move || {
-        let results = perform_search(&query, &search_path, &include_pattern, case_sensitive, use_regex);
+        let results = perform_search(
+            &query,
+            &search_path,
+            &include_pattern,
+            case_sensitive,
+            use_regex,
+        );
         let _ = tx.send(results);
     });
 }
@@ -157,7 +163,11 @@ fn perform_search(
             .split(',')
             .filter_map(|p| glob::Pattern::new(p.trim()).ok())
             .collect();
-        if patterns.is_empty() { None } else { Some(patterns) }
+        if patterns.is_empty() {
+            None
+        } else {
+            Some(patterns)
+        }
     };
 
     let mut file_matches = Vec::new();
@@ -213,10 +223,7 @@ fn perform_search(
 
         if !line_matches.is_empty() {
             // Store a relative path for cleaner display.
-            let display_path = path
-                .strip_prefix(&root)
-                .unwrap_or(path)
-                .to_path_buf();
+            let display_path = path.strip_prefix(&root).unwrap_or(path).to_path_buf();
             file_matches.push(FileMatch {
                 path: display_path,
                 matches: line_matches,
@@ -458,7 +465,10 @@ pub fn render_find_in_files_panel(
                                     let (adj_start, adj_end) = if line.len() > 200 {
                                         let ctx_start = start.saturating_sub(40);
                                         let prefix_len = if ctx_start > 0 { 3 } else { 0 };
-                                        (start - ctx_start + prefix_len, end - ctx_start + prefix_len)
+                                        (
+                                            start - ctx_start + prefix_len,
+                                            end - ctx_start + prefix_len,
+                                        )
                                     } else {
                                         (start, end)
                                     };
@@ -493,7 +503,9 @@ pub fn render_find_in_files_panel(
                                             egui::TextFormat {
                                                 font_id: mono.clone(),
                                                 color: egui::Color32::WHITE,
-                                                background: egui::Color32::from_rgba_premultiplied(180, 150, 50, 120),
+                                                background: egui::Color32::from_rgba_premultiplied(
+                                                    180, 150, 50, 120,
+                                                ),
                                                 ..Default::default()
                                             },
                                         );
@@ -511,9 +523,8 @@ pub fn render_find_in_files_panel(
                                         );
                                     }
 
-                                    let response = ui.add(
-                                        egui::Label::new(job).sense(egui::Sense::click()),
-                                    );
+                                    let response =
+                                        ui.add(egui::Label::new(job).sense(egui::Sense::click()));
 
                                     if response.clicked() {
                                         // Build absolute path from search root + relative path.

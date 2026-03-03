@@ -193,7 +193,10 @@ pub fn render_diff_view(
 
     // Header bar with file names
     let header_height = line_height + 4.0;
-    let header_rect = Rect::from_min_size(available.left_top(), Vec2::new(available.width(), header_height));
+    let header_rect = Rect::from_min_size(
+        available.left_top(),
+        Vec2::new(available.width(), header_height),
+    );
     let half_width = available.width() / 2.0;
     let separator_x = available.left() + half_width;
 
@@ -201,10 +204,8 @@ pub fn render_diff_view(
     ui.painter().rect_filled(header_rect, 0.0, theme.gutter_bg);
 
     // Left header label
-    let left_header_rect = Rect::from_min_size(
-        header_rect.left_top(),
-        Vec2::new(half_width, header_height),
-    );
+    let left_header_rect =
+        Rect::from_min_size(header_rect.left_top(), Vec2::new(half_width, header_height));
     ui.painter().text(
         Pos2::new(left_header_rect.left() + 8.0, left_header_rect.center().y),
         egui::Align2::LEFT_CENTER,
@@ -259,14 +260,23 @@ pub fn render_diff_view(
     let last_visible_row = (first_visible_row + visible_rows_count).min(total_rows);
 
     // Draw background
-    ui.painter().rect_filled(content_rect, 0.0, theme.background);
+    ui.painter()
+        .rect_filled(content_rect, 0.0, theme.background);
 
     // Clip to content area
     let painter = ui.painter_at(content_rect);
 
     // Gutter width (enough for line numbers)
-    let max_line_left = left_rows.iter().filter_map(|r| r.line_number).max().unwrap_or(0);
-    let max_line_right = right_rows.iter().filter_map(|r| r.line_number).max().unwrap_or(0);
+    let max_line_left = left_rows
+        .iter()
+        .filter_map(|r| r.line_number)
+        .max()
+        .unwrap_or(0);
+    let max_line_right = right_rows
+        .iter()
+        .filter_map(|r| r.line_number)
+        .max()
+        .unwrap_or(0);
     let max_line = max_line_left.max(max_line_right);
     let digit_count = format!("{}", max_line).len().max(3);
     let gutter_width = (digit_count as f32 + 2.0) * char_width;
@@ -329,9 +339,21 @@ pub fn render_diff_view(
     }
 
     // Summary bar at the bottom
-    let additions = state.diff_ops.iter().filter(|o| matches!(o, DiffOp::Insert(_))).count();
-    let deletions = state.diff_ops.iter().filter(|o| matches!(o, DiffOp::Delete(_))).count();
-    let unchanged = state.diff_ops.iter().filter(|o| matches!(o, DiffOp::Equal(_))).count();
+    let additions = state
+        .diff_ops
+        .iter()
+        .filter(|o| matches!(o, DiffOp::Insert(_)))
+        .count();
+    let deletions = state
+        .diff_ops
+        .iter()
+        .filter(|o| matches!(o, DiffOp::Delete(_)))
+        .count();
+    let unchanged = state
+        .diff_ops
+        .iter()
+        .filter(|o| matches!(o, DiffOp::Equal(_)))
+        .count();
     let summary = format!(
         "+{} additions  -{} deletions  {} unchanged",
         additions, deletions, unchanged
@@ -367,10 +389,7 @@ fn render_diff_row(
     font_id: &egui::FontId,
     theme: &EditorTheme,
 ) {
-    let row_rect = Rect::from_min_size(
-        Pos2::new(left_x, y),
-        Vec2::new(pane_width, line_height),
-    );
+    let row_rect = Rect::from_min_size(Pos2::new(left_x, y), Vec2::new(pane_width, line_height));
 
     // Draw row background color
     if row.bg != Color32::TRANSPARENT {
@@ -378,10 +397,8 @@ fn render_diff_row(
     }
 
     // Draw gutter background
-    let gutter_rect = Rect::from_min_size(
-        Pos2::new(left_x, y),
-        Vec2::new(gutter_width, line_height),
-    );
+    let gutter_rect =
+        Rect::from_min_size(Pos2::new(left_x, y), Vec2::new(gutter_width, line_height));
     painter.rect_filled(gutter_rect, 0.0, theme.gutter_bg);
 
     // Draw line number

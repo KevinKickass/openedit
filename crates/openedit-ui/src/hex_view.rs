@@ -181,8 +181,7 @@ pub fn render_hex_view(
         if let Some(sel) = state.selected_offset {
             if sel >= byte_offset && sel < byte_offset + state.bytes_per_row {
                 let byte_in_row = sel - byte_offset;
-                let hex_char_offset =
-                    byte_in_row * 3 + if byte_in_row >= 8 { 1 } else { 0 };
+                let hex_char_offset = byte_in_row * 3 + if byte_in_row >= 8 { 1 } else { 0 };
                 let sel_rect = egui::Rect::from_min_size(
                     egui::Pos2::new(hex_x + hex_char_offset as f32 * char_width, y),
                     egui::Vec2::new(char_width * 2.0, line_height),

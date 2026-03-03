@@ -1,6 +1,6 @@
+use crate::theme::EditorTheme;
 use egui::{self, Color32, Pos2, Rect, Ui, Vec2};
 use openedit_core::Document;
-use crate::theme::EditorTheme;
 use std::collections::HashSet;
 
 /// State for the auto-completion popup.

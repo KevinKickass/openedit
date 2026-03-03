@@ -6,7 +6,7 @@
 #[derive(Debug, Clone)]
 pub struct Cell {
     pub ch: char,
-    pub fg: u8,  // ANSI color code (0 = default, 30-37 = standard, 90-97 = bright)
+    pub fg: u8, // ANSI color code (0 = default, 30-37 = standard, 90-97 = bright)
     pub bg: u8,
     pub bold: bool,
 }
@@ -25,9 +25,9 @@ impl Default for Cell {
 /// Parser state for VT100 escape sequences.
 enum ParseState {
     Normal,
-    Escape,        // received ESC
-    CsiEntry,      // received ESC [
-    OscEntry,      // received ESC ]
+    Escape,   // received ESC
+    CsiEntry, // received ESC [
+    OscEntry, // received ESC ]
 }
 
 /// VT100 terminal parser with a screen buffer.
@@ -321,7 +321,9 @@ impl Vt100Parser {
     }
 
     fn parse_csi_params(&self) -> Vec<usize> {
-        let s: String = self.csi_params.iter()
+        let s: String = self
+            .csi_params
+            .iter()
             .filter(|&&b| b != b'?') // strip private mode marker
             .map(|&b| b as char)
             .collect();
@@ -351,7 +353,13 @@ impl Vt100Parser {
                     if i + 2 < params.len() && params[i + 1] == 5 {
                         // 256-color: map to basic 16 for simplicity
                         let n = params[i + 2];
-                        self.current_fg = if n < 8 { 30 + n as u8 } else if n < 16 { 82 + n as u8 } else { 0 };
+                        self.current_fg = if n < 8 {
+                            30 + n as u8
+                        } else if n < 16 {
+                            82 + n as u8
+                        } else {
+                            0
+                        };
                         i += 2;
                     } else if i + 4 < params.len() && params[i + 1] == 2 {
                         // True color: just use default
@@ -617,7 +625,7 @@ mod tests {
     #[test]
     fn test_cursor_movement() {
         let mut p = Vt100Parser::new(80, 24);
-        p.feed(b"\x1b[5;10H");  // Move to row 5, col 10
+        p.feed(b"\x1b[5;10H"); // Move to row 5, col 10
         assert_eq!(p.cursor_row, 4); // 0-indexed
         assert_eq!(p.cursor_col, 9);
     }
@@ -633,7 +641,7 @@ mod tests {
     #[test]
     fn test_sgr_color() {
         let mut p = Vt100Parser::new(80, 24);
-        p.feed(b"\x1b[31mR");  // Red foreground
+        p.feed(b"\x1b[31mR"); // Red foreground
         assert_eq!(p.screen[0].ch, 'R');
         assert_eq!(p.screen[0].fg, 31);
     }
@@ -650,8 +658,8 @@ mod tests {
     fn test_erase_in_line() {
         let mut p = Vt100Parser::new(80, 24);
         p.feed(b"ABCDEF");
-        p.feed(b"\x1b[3G");   // Move to col 3
-        p.feed(b"\x1b[0K");   // Erase from cursor to end of line
+        p.feed(b"\x1b[3G"); // Move to col 3
+        p.feed(b"\x1b[0K"); // Erase from cursor to end of line
         assert_eq!(p.screen[0].ch, 'A');
         assert_eq!(p.screen[1].ch, 'B');
         assert_eq!(p.screen[2].ch, ' ');
@@ -713,9 +721,9 @@ mod tests {
     #[test]
     fn test_cursor_up_down() {
         let mut p = Vt100Parser::new(80, 24);
-        p.feed(b"\x1b[5B");  // Down 5
+        p.feed(b"\x1b[5B"); // Down 5
         assert_eq!(p.cursor_row, 5);
-        p.feed(b"\x1b[2A");  // Up 2
+        p.feed(b"\x1b[2A"); // Up 2
         assert_eq!(p.cursor_row, 3);
     }
 
@@ -723,9 +731,9 @@ mod tests {
     fn test_save_restore_cursor() {
         let mut p = Vt100Parser::new(80, 24);
         p.feed(b"\x1b[5;10H"); // Move to 5,10
-        p.feed(b"\x1b7");      // Save
-        p.feed(b"\x1b[1;1H");  // Move to 1,1
-        p.feed(b"\x1b8");      // Restore
+        p.feed(b"\x1b7"); // Save
+        p.feed(b"\x1b[1;1H"); // Move to 1,1
+        p.feed(b"\x1b8"); // Restore
         assert_eq!(p.cursor_row, 4);
         assert_eq!(p.cursor_col, 9);
     }

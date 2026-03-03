@@ -61,7 +61,10 @@ impl SnippetState {
         }
 
         // Find placeholder with current_index
-        let ph = self.placeholders.iter().find(|p| p.index == self.current_index);
+        let ph = self
+            .placeholders
+            .iter()
+            .find(|p| p.index == self.current_index);
         if let Some(ph) = ph {
             let line = self.insert_position.line + ph.line_offset;
             let col = if ph.line_offset == 0 {
@@ -292,7 +295,8 @@ pub fn builtin_snippets() -> Vec<Snippet> {
         Snippet {
             trigger: "class".into(),
             label: "Class definition".into(),
-            body: "class ${1:Name}:\n    def __init__(self${2:, params}):\n        ${0:pass}".into(),
+            body: "class ${1:Name}:\n    def __init__(self${2:, params}):\n        ${0:pass}"
+                .into(),
             language: "Python".into(),
         },
         Snippet {
@@ -471,7 +475,11 @@ impl SnippetEngine {
         let line = doc.buffer.line(pos.line).to_string();
         let line_chars: Vec<char> = line.chars().collect();
         let mut word_start = pos.col;
-        while word_start > 0 && line_chars.get(word_start - 1).map_or(false, |c| c.is_alphanumeric() || *c == '_') {
+        while word_start > 0
+            && line_chars
+                .get(word_start - 1)
+                .map_or(false, |c| c.is_alphanumeric() || *c == '_')
+        {
             word_start -= 1;
         }
         let word: String = line_chars[word_start..pos.col].iter().collect();
@@ -481,8 +489,10 @@ impl SnippetEngine {
         }
 
         // Find matching snippet
-        let snippet = self.snippets.iter()
-            .find(|s| s.trigger == word && (s.language == language || s.language.eq_ignore_ascii_case(language)));
+        let snippet = self.snippets.iter().find(|s| {
+            s.trigger == word
+                && (s.language == language || s.language.eq_ignore_ascii_case(language))
+        });
 
         let snippet = match snippet {
             Some(s) => s.clone(),
@@ -513,7 +523,8 @@ impl SnippetEngine {
                 doc.cursors.primary_mut().move_to(target, false);
                 if len > 0 {
                     doc.cursors.primary_mut().anchor = Some(target);
-                    doc.cursors.primary_mut().position = Position::new(target.line, target.col + len);
+                    doc.cursors.primary_mut().position =
+                        Position::new(target.line, target.col + len);
                 }
             }
         }
@@ -589,7 +600,9 @@ mod tests {
     #[test]
     fn test_snippet_trigger_match() {
         let snippets = builtin_snippets();
-        let rust_fn = snippets.iter().find(|s| s.trigger == "fn" && s.language == "Rust");
+        let rust_fn = snippets
+            .iter()
+            .find(|s| s.trigger == "fn" && s.language == "Rust");
         assert!(rust_fn.is_some());
     }
 
@@ -598,7 +611,10 @@ mod tests {
         let snippets = builtin_snippets();
         let rust_count = snippets.iter().filter(|s| s.language == "Rust").count();
         let python_count = snippets.iter().filter(|s| s.language == "Python").count();
-        let ts_count = snippets.iter().filter(|s| s.language == "TypeScript").count();
+        let ts_count = snippets
+            .iter()
+            .filter(|s| s.language == "TypeScript")
+            .count();
         let go_count = snippets.iter().filter(|s| s.language == "Go").count();
         assert!(rust_count >= 8);
         assert!(python_count >= 6);
@@ -620,7 +636,9 @@ mod tests {
         let mut doc = Document::from_str("fn");
         doc.language = Some("Rust".to_string());
         // Move cursor to end of "fn"
-        doc.cursors.primary_mut().move_to(Position::new(0, 2), false);
+        doc.cursors
+            .primary_mut()
+            .move_to(Position::new(0, 2), false);
 
         let expanded = engine.try_expand(&mut doc);
         assert!(expanded);
@@ -632,9 +650,27 @@ mod tests {
         let mut state = SnippetState {
             active: true,
             placeholders: vec![
-                SnippetPlaceholder { index: 1, default_text: "name".into(), line_offset: 0, col_offset: 3, length: 4 },
-                SnippetPlaceholder { index: 2, default_text: "params".into(), line_offset: 0, col_offset: 8, length: 6 },
-                SnippetPlaceholder { index: 0, default_text: String::new(), line_offset: 1, col_offset: 4, length: 0 },
+                SnippetPlaceholder {
+                    index: 1,
+                    default_text: "name".into(),
+                    line_offset: 0,
+                    col_offset: 3,
+                    length: 4,
+                },
+                SnippetPlaceholder {
+                    index: 2,
+                    default_text: "params".into(),
+                    line_offset: 0,
+                    col_offset: 8,
+                    length: 6,
+                },
+                SnippetPlaceholder {
+                    index: 0,
+                    default_text: String::new(),
+                    line_offset: 1,
+                    col_offset: 4,
+                    length: 0,
+                },
             ],
             current_index: 1,
             insert_position: Position::new(0, 0),
