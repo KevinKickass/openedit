@@ -1,0 +1,542 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.1.0)"
+        required: true
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  APP_NAME: openedit
+  APP_DISPLAY_NAME: OpenEdit
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Determine the version string used across all jobs
+  # ---------------------------------------------------------------------------
+  prepare:
+    name: Prepare release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Release tag: ${TAG}, version: ${VERSION}"
+
+  # ---------------------------------------------------------------------------
+  # Linux x86_64: binary, AppImage, deb, rpm
+  # ---------------------------------------------------------------------------
+  linux:
+    name: Linux x86_64
+    needs: prepare
+    runs-on: ubuntu-22.04
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libxcb-render0-dev \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev \
+            libxkbcommon-dev \
+            libssl-dev \
+            libfuse2 \
+            rpm \
+            dpkg-dev \
+            file
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: linux-x86_64-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Install cargo packaging tools
+        run: |
+          cargo install cargo-deb --locked || true
+          cargo install cargo-generate-rpm --locked || true
+
+      # --- Plain tarball ---
+      - name: Create tarball
+        run: |
+          mkdir -p dist
+          tar czf "dist/openedit-${VERSION}-linux-x86_64.tar.gz" \
+            -C target/release openedit
+
+      # --- AppImage ---
+      - name: Build AppImage
+        run: |
+          # Download tools
+          wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage" -O linuxdeploy
+          chmod +x linuxdeploy
+
+          # Create AppDir structure
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+
+          cp target/release/openedit AppDir/usr/bin/
+          cp assets/openedit.desktop AppDir/usr/share/applications/
+          cp assets/openedit.desktop AppDir/
+          cp assets/icon.png AppDir/usr/share/icons/hicolor/256x256/apps/openedit.png
+          cp assets/icon.png AppDir/openedit.png
+
+          # Build AppImage
+          ARCH=x86_64 OUTPUT="dist/openedit-${VERSION}-linux-x86_64.AppImage" \
+            ./linuxdeploy --appdir AppDir --output appimage
+
+      # --- deb package ---
+      - name: Build deb package
+        run: |
+          PKG_ROOT="deb-pkg"
+          PKG_DIR="${PKG_ROOT}/openedit_${VERSION}_amd64"
+          mkdir -p "${PKG_DIR}/DEBIAN"
+          mkdir -p "${PKG_DIR}/usr/bin"
+          mkdir -p "${PKG_DIR}/usr/share/applications"
+          mkdir -p "${PKG_DIR}/usr/share/icons/hicolor/256x256/apps"
+          mkdir -p "${PKG_DIR}/usr/share/doc/openedit"
+
+          # Binary
+          cp target/release/openedit "${PKG_DIR}/usr/bin/"
+          strip "${PKG_DIR}/usr/bin/openedit"
+
+          # Desktop file and icon
+          cp assets/openedit.desktop "${PKG_DIR}/usr/share/applications/"
+          cp assets/icon.png "${PKG_DIR}/usr/share/icons/hicolor/256x256/apps/openedit.png"
+
+          # Copyright file
+          cat > "${PKG_DIR}/usr/share/doc/openedit/copyright" <<'COPY'
+          Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+          Upstream-Name: OpenEdit
+          Upstream-Contact: OpenEdit Contributors
+          License: MIT or Apache-2.0
+          COPY
+
+          # Control file
+          cat > "${PKG_DIR}/DEBIAN/control" <<CTRL
+          Package: openedit
+          Version: ${VERSION}
+          Section: editors
+          Priority: optional
+          Architecture: amd64
+          Depends: libgtk-3-0, libxcb-render0, libxcb-shape0, libxcb-xfixes0, libxkbcommon0
+          Maintainer: OpenEdit Contributors <openedit@users.noreply.github.com>
+          Description: A fast, modern text editor built with Rust and egui
+           OpenEdit is a lightweight yet powerful text editor featuring syntax
+           highlighting for 24 languages, multi-cursor editing, code folding,
+           a command palette, split view, integrated terminal, and more.
+          CTRL
+
+          dpkg-deb --build "${PKG_DIR}"
+          cp "${PKG_ROOT}/openedit_${VERSION}_amd64.deb" dist/
+
+      # --- rpm package ---
+      - name: Build rpm package
+        run: |
+          mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+
+          # Create source tarball for rpmbuild
+          mkdir -p "/tmp/openedit-${VERSION}/usr/bin"
+          mkdir -p "/tmp/openedit-${VERSION}/usr/share/applications"
+          mkdir -p "/tmp/openedit-${VERSION}/usr/share/icons/hicolor/256x256/apps"
+          cp target/release/openedit "/tmp/openedit-${VERSION}/usr/bin/"
+          strip "/tmp/openedit-${VERSION}/usr/bin/openedit"
+          cp assets/openedit.desktop "/tmp/openedit-${VERSION}/usr/share/applications/"
+          cp assets/icon.png "/tmp/openedit-${VERSION}/usr/share/icons/hicolor/256x256/apps/openedit.png"
+
+          tar czf ~/rpmbuild/SOURCES/openedit-${VERSION}.tar.gz -C /tmp "openedit-${VERSION}"
+
+          # Write spec file
+          cat > ~/rpmbuild/SPECS/openedit.spec <<SPEC
+          Name:           openedit
+          Version:        ${VERSION}
+          Release:        1%{?dist}
+          Summary:        A fast, modern text editor built with Rust and egui
+          License:        MIT OR Apache-2.0
+          URL:            https://github.com/openedit/openedit
+          Source0:        openedit-%{version}.tar.gz
+
+          %description
+          OpenEdit is a lightweight yet powerful text editor featuring syntax
+          highlighting for 24 languages, multi-cursor editing, code folding,
+          a command palette, split view, integrated terminal, and more.
+
+          %prep
+          %setup -q
+
+          %install
+          mkdir -p %{buildroot}/usr/bin
+          mkdir -p %{buildroot}/usr/share/applications
+          mkdir -p %{buildroot}/usr/share/icons/hicolor/256x256/apps
+          cp usr/bin/openedit %{buildroot}/usr/bin/
+          cp usr/share/applications/openedit.desktop %{buildroot}/usr/share/applications/
+          cp usr/share/icons/hicolor/256x256/apps/openedit.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/
+
+          %files
+          %{_bindir}/openedit
+          %{_datadir}/applications/openedit.desktop
+          %{_datadir}/icons/hicolor/256x256/apps/openedit.png
+          SPEC
+
+          rpmbuild -bb ~/rpmbuild/SPECS/openedit.spec
+          cp ~/rpmbuild/RPMS/x86_64/openedit-*.rpm dist/ || \
+            cp ~/rpmbuild/RPMS/*/openedit-*.rpm dist/
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: dist/*
+
+  # ---------------------------------------------------------------------------
+  # macOS: universal binary (x86_64 + aarch64), .app bundle, DMG
+  # ---------------------------------------------------------------------------
+  macos:
+    name: macOS universal
+    needs: prepare
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust (with both targets)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: macos-universal-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build x86_64
+        run: cargo build --release --target x86_64-apple-darwin
+
+      - name: Build aarch64
+        run: cargo build --release --target aarch64-apple-darwin
+
+      - name: Create universal binary with lipo
+        run: |
+          mkdir -p dist
+          lipo -create \
+            target/x86_64-apple-darwin/release/openedit \
+            target/aarch64-apple-darwin/release/openedit \
+            -output dist/openedit-universal
+
+      - name: Create .app bundle
+        run: |
+          APP="dist/OpenEdit.app"
+          mkdir -p "${APP}/Contents/MacOS"
+          mkdir -p "${APP}/Contents/Resources"
+
+          cp dist/openedit-universal "${APP}/Contents/MacOS/openedit"
+          chmod +x "${APP}/Contents/MacOS/openedit"
+
+          # Copy icon (would be .icns in production; using png as placeholder)
+          cp assets/icon.png "${APP}/Contents/Resources/AppIcon.png"
+
+          # Write Info.plist
+          cat > "${APP}/Contents/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDevelopmentRegion</key>
+            <string>en</string>
+            <key>CFBundleDisplayName</key>
+            <string>OpenEdit</string>
+            <key>CFBundleExecutable</key>
+            <string>openedit</string>
+            <key>CFBundleIconFile</key>
+            <string>AppIcon</string>
+            <key>CFBundleIdentifier</key>
+            <string>org.openedit.OpenEdit</string>
+            <key>CFBundleInfoDictionaryVersion</key>
+            <string>6.0</string>
+            <key>CFBundleName</key>
+            <string>OpenEdit</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${VERSION}</string>
+            <key>CFBundleVersion</key>
+            <string>${VERSION}</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>11.0</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+            <key>CFBundleDocumentTypes</key>
+            <array>
+              <dict>
+                <key>CFBundleTypeName</key>
+                <string>Text Document</string>
+                <key>CFBundleTypeRole</key>
+                <string>Editor</string>
+                <key>LSItemContentTypes</key>
+                <array>
+                  <string>public.plain-text</string>
+                  <string>public.source-code</string>
+                </array>
+              </dict>
+            </array>
+          </dict>
+          </plist>
+          PLIST
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Create DMG
+        run: |
+          create-dmg \
+            --volname "OpenEdit ${VERSION}" \
+            --volicon "assets/icon.png" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "OpenEdit.app" 150 185 \
+            --app-drop-link 450 185 \
+            --no-internet-enable \
+            "dist/openedit-${VERSION}-macos-universal.dmg" \
+            "dist/OpenEdit.app" || {
+              # Fallback to hdiutil if create-dmg fails
+              echo "create-dmg failed, falling back to hdiutil"
+              hdiutil create -volname "OpenEdit ${VERSION}" \
+                -srcfolder "dist/OpenEdit.app" \
+                -ov -format UDZO \
+                "dist/openedit-${VERSION}-macos-universal.dmg"
+            }
+
+      - name: Create tarball
+        run: |
+          tar czf "dist/openedit-${VERSION}-macos-universal.tar.gz" \
+            -C dist OpenEdit.app
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-universal
+          path: |
+            dist/*.dmg
+            dist/*.tar.gz
+
+  # ---------------------------------------------------------------------------
+  # Windows x86_64: MSI (WiX), zip
+  # ---------------------------------------------------------------------------
+  windows:
+    name: Windows x86_64
+    needs: prepare
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: windows-x86_64-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Create zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Compress-Archive `
+            -Path "target\release\openedit.exe" `
+            -DestinationPath "dist\openedit-${{ env.VERSION }}-windows-x86_64.zip"
+
+      - name: Install WiX Toolset
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+
+      - name: Build MSI with WiX
+        shell: pwsh
+        run: |
+          $version = "${{ env.VERSION }}"
+
+          # WiX v5 uses .wixlib / .wxs → .wixobj → .msi pipeline
+          # We use the provided WiX template in packaging/wix/main.wxs
+
+          # Replace version placeholder in wxs
+          $wxsContent = Get-Content "packaging\wix\main.wxs" -Raw
+          $wxsContent = $wxsContent -replace '\$\(var\.ProductVersion\)', $version
+          $wxsContent | Set-Content "packaging\wix\main.wxs.tmp"
+
+          # Build MSI using wix command
+          wix build `
+            -src "packaging\wix\main.wxs.tmp" `
+            -d "ProductVersion=$version" `
+            -d "BinaryPath=..\..\target\release\openedit.exe" `
+            -d "LicensePath=LICENSE" `
+            -d "IconPath=assets\icon.png" `
+            -out "dist\openedit-$version-windows-x86_64.msi" `
+            -arch x64 || Write-Warning "WiX build failed; MSI may not be available"
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64
+          path: dist/*
+
+  # ---------------------------------------------------------------------------
+  # Flatpak (build manifest; actual build requires Flatpak runtime)
+  # ---------------------------------------------------------------------------
+  flatpak:
+    name: Flatpak
+    needs: prepare
+    runs-on: ubuntu-22.04
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Flatpak and flatpak-builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists \
+            flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: Install Flatpak SDK
+        run: |
+          flatpak install --user -y flathub \
+            org.freedesktop.Platform//23.08 \
+            org.freedesktop.Sdk//23.08 \
+            org.freedesktop.Sdk.Extension.rust-stable//23.08
+
+      - name: Build Flatpak
+        run: |
+          mkdir -p dist
+          flatpak-builder --user --force-clean --repo=repo \
+            builddir packaging/flatpak/org.openedit.OpenEdit.yml || {
+              echo "::warning::Flatpak build failed. The manifest is included in the repo for manual builds."
+              exit 0
+            }
+
+          flatpak build-bundle repo \
+            "dist/openedit-${VERSION}-linux-x86_64.flatpak" \
+            org.openedit.OpenEdit || {
+              echo "::warning::Flatpak bundle creation failed."
+              exit 0
+            }
+
+      - name: Upload Flatpak artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flatpak
+          path: dist/*.flatpak
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Create GitHub Release and attach all artifacts
+  # ---------------------------------------------------------------------------
+  release:
+    name: Create GitHub Release
+    needs: [prepare, linux, macos, windows, flatpak]
+    if: always() && needs.linux.result == 'success' && needs.macos.result == 'success' && needs.windows.result == 'success'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect release files
+        run: |
+          mkdir -p release
+          find artifacts -type f \( \
+            -name "*.tar.gz" -o \
+            -name "*.AppImage" -o \
+            -name "*.deb" -o \
+            -name "*.rpm" -o \
+            -name "*.flatpak" -o \
+            -name "*.dmg" -o \
+            -name "*.msi" -o \
+            -name "*.zip" \
+          \) -exec cp {} release/ \;
+          ls -lh release/
+
+      - name: Generate SHA256 checksums
+        run: |
+          cd release
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: "OpenEdit ${{ env.TAG }}"
+          draft: false
+          prerelease: ${{ contains(env.TAG, '-') }}
+          generate_release_notes: true
+          files: |
+            release/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

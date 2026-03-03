@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+  WiX v5 installer template for OpenEdit.
+
+  Build variables (passed via -d):
+    ProductVersion  - e.g. "0.1.0"
+    BinaryPath      - path to openedit.exe
+    LicensePath     - path to LICENSE file
+    IconPath        - path to icon file
+
+  Build command:
+    wix build -src main.wxs \
+      -d ProductVersion=0.1.0 \
+      -d BinaryPath=../../target/release/openedit.exe \
+      -d LicensePath=../../LICENSE \
+      -d IconPath=../../assets/icon.png \
+      -out openedit-0.1.0-windows-x86_64.msi -arch x64
+-->
+
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <Package
+    Name="OpenEdit"
+    Manufacturer="OpenEdit Contributors"
+    Version="$(var.ProductVersion)"
+    UpgradeCode="E8A3B8C1-5F7D-4A2E-9B6C-1D0F3E8A7B5C"
+    Scope="perMachine">
+
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of OpenEdit is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- ================================================================== -->
+    <!-- Directory layout                                                    -->
+    <!-- ================================================================== -->
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="OpenEdit">
+        <Component Id="MainExecutable" Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890">
+          <File Id="OpenEditExe"
+                Source="$(var.BinaryPath)"
+                Name="openedit.exe"
+                KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <!-- Start Menu shortcut -->
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="OpenEdit">
+        <Component Id="StartMenuShortcut" Guid="B2C3D4E5-F6A7-8901-BCDE-F12345678901">
+          <Shortcut Id="AppShortcut"
+                    Name="OpenEdit"
+                    Description="A fast, modern text editor"
+                    Target="[INSTALLFOLDER]openedit.exe"
+                    WorkingDirectory="INSTALLFOLDER" />
+          <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+          <RegistryValue Root="HKCU"
+                         Key="Software\OpenEdit"
+                         Name="StartMenuShortcut"
+                         Type="integer"
+                         Value="1"
+                         KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <!-- Desktop shortcut -->
+    <StandardDirectory Id="DesktopFolder">
+      <Component Id="DesktopShortcut" Guid="C3D4E5F6-A7B8-9012-CDEF-123456789012">
+        <Shortcut Id="DesktopAppShortcut"
+                  Name="OpenEdit"
+                  Description="A fast, modern text editor"
+                  Target="[INSTALLFOLDER]openedit.exe"
+                  WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\OpenEdit"
+                       Name="DesktopShortcut"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <!-- ================================================================== -->
+    <!-- File associations                                                   -->
+    <!-- ================================================================== -->
+    <Component Id="FileAssociations" Directory="INSTALLFOLDER"
+               Guid="D4E5F6A7-B8C9-0123-DEFA-234567890123">
+
+      <RegistryValue Root="HKCU"
+                     Key="Software\OpenEdit"
+                     Name="FileAssociations"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+
+      <!-- Register ProgId for OpenEdit -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\OpenEdit.Document"
+                     Type="string"
+                     Value="OpenEdit Document" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\OpenEdit.Document\shell\open\command"
+                     Type="string"
+                     Value="&quot;[INSTALLFOLDER]openedit.exe&quot; &quot;%1&quot;" />
+
+      <!-- .txt -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.txt\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <!-- .rs -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.rs\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <!-- .py -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.py\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <!-- .js -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.js\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <!-- .ts -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.ts\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <!-- .json -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.json\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <!-- .toml -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.toml\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <!-- .yaml / .yml -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.yaml\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.yml\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <!-- .html -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.html\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <!-- .css -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.css\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <!-- .xml -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.xml\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <!-- .md -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.md\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <!-- .go -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.go\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <!-- .java -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.java\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <!-- .c / .h -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.c\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.h\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <!-- .cpp / .hpp -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.cpp\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.hpp\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <!-- .sh -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.sh\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <!-- .rb -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.rb\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+      <!-- .lua -->
+      <RegistryValue Root="HKCU"
+                     Key="Software\Classes\.lua\OpenWithProgids"
+                     Name="OpenEdit.Document"
+                     Type="string"
+                     Value="" />
+    </Component>
+
+    <!-- ================================================================== -->
+    <!-- Feature tree                                                        -->
+    <!-- ================================================================== -->
+    <Feature Id="MainFeature" Title="OpenEdit" Level="1">
+      <ComponentRef Id="MainExecutable" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+      <ComponentRef Id="FileAssociations" />
+    </Feature>
+
+  </Package>
+
+</Wix>

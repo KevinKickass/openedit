@@ -1,0 +1,65 @@
+# Flatpak manifest for OpenEdit
+#
+# Build locally:
+#   flatpak-builder --user --install --force-clean builddir org.openedit.OpenEdit.yml
+#
+# Required runtimes (install first):
+#   flatpak install flathub org.freedesktop.Platform//23.08
+#   flatpak install flathub org.freedesktop.Sdk//23.08
+#   flatpak install flathub org.freedesktop.Sdk.Extension.rust-stable//23.08
+
+app-id: org.openedit.OpenEdit
+runtime: org.freedesktop.Platform
+runtime-version: "23.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+command: openedit
+
+finish-args:
+  # Windowing
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  # GPU acceleration for egui/wgpu rendering
+  - --device=dri
+  # File access (user files for editing)
+  - --filesystem=home
+  - --filesystem=/tmp
+  # For file dialogs (portal-based)
+  - --talk-name=org.freedesktop.portal.FileChooser
+  # For desktop notifications
+  - --talk-name=org.freedesktop.Notifications
+  # Network access (for LSP servers, future plugin downloads)
+  - --share=network
+  # Terminal PTY support
+  - --talk-name=org.freedesktop.portal.Desktop
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/openedit/cargo
+    RUST_BACKTRACE: "1"
+
+modules:
+  - name: openedit
+    buildsystem: simple
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml || true
+      - cargo build --release --offline || cargo build --release
+      - install -Dm755 target/release/openedit /app/bin/openedit
+      - install -Dm644 assets/openedit.desktop /app/share/applications/org.openedit.OpenEdit.desktop
+      - install -Dm644 assets/icon.png /app/share/icons/hicolor/256x256/apps/org.openedit.OpenEdit.png
+    sources:
+      - type: dir
+        path: ../..
+      # For reproducible builds, add cargo sources via flatpak-cargo-generator:
+      #   python3 flatpak-cargo-generator.py Cargo.lock -o cargo-sources.json
+      # - type: file
+      #   path: cargo-sources.json
+
+      # Alternatively, for a tagged release, use a git or archive source:
+      # - type: archive
+      #   url: https://github.com/openedit/openedit/archive/refs/tags/v0.1.0.tar.gz
+      #   sha256: TO_BE_FILLED_AT_RELEASE_TIME
