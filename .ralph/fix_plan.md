@@ -155,7 +155,7 @@
 - [x] Run macro multiple times (dialog with count input)
 - [x] Save/load macros to disk (JSON in config dir)
 - [x] Named macro slots with load/delete UI
-- [ ] Edit macro (as script/commands)
+- [x] Edit macro (as script in editor tab, save parses back)
 
 ### Hex Editor (done)
 - [x] Toggle hex view mode for current file (Ctrl+Shift+H)
@@ -194,25 +194,25 @@
 - [x] Command mode (:w, :q, :wq, etc.)
 - [x] Insert mode passthrough (bracket auto-close, clipboard, etc.)
 
-### Snippet Engine (done — wired)
+### Snippet Engine (done)
 - [x] Snippet struct with trigger/label/body
 - [x] Built-in snippets for Rust, Python, TypeScript, Go (40+)
 - [x] Placeholder expansion ($1, $2, ${N:default}, ${N|choice|list|})
 - [x] SnippetEngine with try_expand() and tab navigation
 - [x] Wired into text input handler (Tab triggers expansion)
-- [ ] Visual highlighting of active placeholders
-- [ ] User-defined snippets (file-based)
+- [x] Visual highlighting of active placeholders (teal bg + underline)
+- [x] User-defined snippets (~/.config/openedit/snippets.json)
 
-### LSP Support (done — wired)
+### LSP Support (done)
 - [x] LSP client infrastructure (JSON-RPC)
 - [x] Server startup for Rust, Python, TypeScript, Go, C/C++, Lua
 - [x] didOpen/didChange notifications (debounced 300ms)
 - [x] Hover tooltip rendering (Ctrl+hover)
 - [x] Go-to-definition (F12, Ctrl+Click)
-- [ ] Diagnostics display (squiggles in editor)
-- [ ] Completion integration with autocomplete
-- [ ] Find references
-- [ ] Rename symbol
+- [x] Diagnostics display (squiggles in editor)
+- [x] Completion integration with autocomplete
+- [x] Find references (Shift+F12, grouped results panel)
+- [x] Rename symbol (F2, inline dialog, workspace-wide edits)
 
 ### Plugin Architecture
 - [ ] Plugin API definition (Rust trait-based + optional WASM)
@@ -226,7 +226,7 @@
 - [x] 8 built-in themes (switchable via command palette)
 - [x] Bracket colorization (rainbow brackets)
 - [x] Toggle comment (Ctrl+/)
-- [ ] Theming engine (JSON/TOML theme files, user-defined)
+- [x] Theming engine (TOML theme files in ~/.config/openedit/themes/, base inheritance)
 - [ ] Theme import from VS Code / Notepad++ themes
 - [ ] Auto-update mechanism
 - [ ] Localization (i18n)
