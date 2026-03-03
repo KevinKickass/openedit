@@ -45,3 +45,6 @@ tree-sitter-sequel = "0.3"
 memmap2 = { workspace = true }
 
 [dev-dependencies]
+
+[lints]
+workspace = true

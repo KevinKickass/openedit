@@ -76,17 +76,15 @@ impl UndoManager {
 
     /// Pop the last transaction for undoing. Returns the transaction to apply.
     pub fn undo(&mut self) -> Option<Transaction> {
-        self.undo_stack.pop().map(|txn| {
+        self.undo_stack.pop().inspect(|txn| {
             self.redo_stack.push(txn.clone());
-            txn
         })
     }
 
     /// Pop the last redo transaction. Returns the transaction to apply.
     pub fn redo(&mut self) -> Option<Transaction> {
-        self.redo_stack.pop().map(|txn| {
+        self.redo_stack.pop().inspect(|txn| {
             self.undo_stack.push(txn.clone());
-            txn
         })
     }
 

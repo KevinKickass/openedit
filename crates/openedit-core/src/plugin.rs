@@ -56,6 +56,7 @@ pub struct PluginCommand {
 }
 
 /// Context passed to plugin methods, providing access to editor state.
+#[derive(Default)]
 pub struct PluginContext<'a> {
     /// The full text of the active document (if any).
     pub active_text: Option<&'a str>,
@@ -81,25 +82,6 @@ pub struct PluginContext<'a> {
     pub tab_count: usize,
     /// Editor version string.
     pub editor_version: &'a str,
-}
-
-impl<'a> Default for PluginContext<'a> {
-    fn default() -> Self {
-        Self {
-            active_text: None,
-            active_path: None,
-            selection: None,
-            selected_text: None,
-            cursor_line: 0,
-            cursor_col: 0,
-            language: None,
-            line_count: 0,
-            file_name: None,
-            is_modified: false,
-            tab_count: 0,
-            editor_version: "",
-        }
-    }
 }
 
 /// Result of a plugin text transformation.

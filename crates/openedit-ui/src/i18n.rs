@@ -10,8 +10,9 @@ use std::collections::HashMap;
 use std::fmt;
 
 /// Supported locales.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Locale {
+    #[default]
     English,
     German,
     French,
@@ -92,16 +93,10 @@ impl fmt::Display for Locale {
     }
 }
 
-impl Default for Locale {
-    fn default() -> Self {
-        Locale::English
-    }
-}
-
 // ── Thread-local active locale ──────────────────────────────────────────
 
 thread_local! {
-    static CURRENT_LOCALE: RefCell<Locale> = RefCell::new(Locale::English);
+    static CURRENT_LOCALE: RefCell<Locale> = const { RefCell::new(Locale::English) };
 }
 
 /// Set the active locale for the current thread.

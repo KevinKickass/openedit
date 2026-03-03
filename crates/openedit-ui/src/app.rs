@@ -147,6 +147,7 @@ pub struct OpenEditApp {
     /// Zen mode (distraction-free).
     zen_mode: bool,
     /// Split divider drag state.
+    #[allow(dead_code)]
     split_ratio: f32,
     split_dragging: bool,
     /// Show line numbers in the gutter.
@@ -2281,7 +2282,7 @@ impl eframe::App for OpenEditApp {
         let mut zoom_out = false;
         let mut zoom_reset = false;
         let mut toggle_bookmark = false;
-        let mut next_bookmark = false;
+        let next_bookmark = false;
         let mut prev_bookmark = false;
         let mut toggle_md_preview = false;
         let mut toggle_macro_recording = false;
@@ -3945,7 +3946,7 @@ impl eframe::App for OpenEditApp {
                     let existing_tab = self
                         .documents
                         .iter()
-                        .position(|d| d.path.as_ref().map_or(false, |p| *p == path));
+                        .position(|d| d.path.as_ref().is_some_and(|p| *p == path));
                     if let Some(tab_idx) = existing_tab {
                         self.active_tab = tab_idx;
                     } else {
@@ -4002,7 +4003,7 @@ impl eframe::App for OpenEditApp {
                     let existing = self
                         .documents
                         .iter()
-                        .position(|d| d.path.as_ref().map_or(false, |p| *p == path));
+                        .position(|d| d.path.as_ref().is_some_and(|p| *p == path));
                     if let Some(tab_idx) = existing {
                         self.active_tab = tab_idx;
                     } else {

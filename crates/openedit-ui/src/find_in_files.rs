@@ -372,10 +372,11 @@ pub fn render_find_in_files_panel(
                     start_search(state);
                 }
 
-                if state.show_replace && !state.results.is_empty() {
-                    if ui.button("Replace All").clicked() {
-                        replace_all_in_files(state);
-                    }
+                if state.show_replace
+                    && !state.results.is_empty()
+                    && ui.button("Replace All").clicked()
+                {
+                    replace_all_in_files(state);
                 }
 
                 if state.searching {

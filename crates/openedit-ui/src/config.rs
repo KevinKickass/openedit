@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Persistent editor configuration, stored as TOML.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct EditorConfig {
     #[serde(default)]
     pub editor: EditorSection,
@@ -73,15 +73,6 @@ impl Default for UiSection {
             show_minimap: default_show_minimap(),
             show_sidebar: false,
             language: default_language(),
-        }
-    }
-}
-
-impl Default for EditorConfig {
-    fn default() -> Self {
-        Self {
-            editor: EditorSection::default(),
-            ui: UiSection::default(),
         }
     }
 }

@@ -3,6 +3,7 @@ use egui;
 use openedit_core::syntax::Symbol;
 
 /// State for the function list panel.
+#[derive(Default)]
 pub struct FunctionListState {
     /// Whether the panel is visible.
     pub visible: bool,
@@ -10,16 +11,6 @@ pub struct FunctionListState {
     pub symbols: Vec<Symbol>,
     /// Filter query.
     pub filter: String,
-}
-
-impl Default for FunctionListState {
-    fn default() -> Self {
-        Self {
-            visible: false,
-            symbols: Vec::new(),
-            filter: String::new(),
-        }
-    }
 }
 
 /// Simple fuzzy match: all query characters must appear in the label in order (case insensitive).

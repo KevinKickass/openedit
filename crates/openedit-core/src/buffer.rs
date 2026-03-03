@@ -20,6 +20,7 @@ impl Buffer {
         Self { rope: Rope::new() }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(text: &str) -> Self {
         Self {
             rope: Rope::from_str(text),
@@ -129,6 +130,7 @@ impl Buffer {
     }
 
     /// Get the entire buffer content as a String.
+    #[allow(clippy::inherent_to_string)]
     pub fn to_string(&self) -> String {
         self.rope.to_string()
     }

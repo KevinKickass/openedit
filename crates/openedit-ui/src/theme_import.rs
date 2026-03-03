@@ -210,7 +210,7 @@ fn parse_vscode_colors(
         colors
             .and_then(|c| c.get(key))
             .and_then(|v| v.as_str())
-            .map(|s| normalize_color(s))
+            .map(normalize_color)
     };
 
     ThemeColorsFile {
@@ -239,8 +239,7 @@ fn parse_vscode_colors(
 /// shorter hex (e.g., #FFF), or colors may have extra whitespace.
 fn normalize_color(s: &str) -> String {
     let s = s.trim();
-    if s.starts_with('#') {
-        let hex = &s[1..];
+    if let Some(hex) = s.strip_prefix('#') {
         match hex.len() {
             // #RGB -> #RRGGBB
             3 => {
@@ -287,7 +286,7 @@ fn parse_vscode_token_colors(token_colors: Option<&Vec<serde_json::Value>>) -> S
         let foreground = settings
             .get("foreground")
             .and_then(|v| v.as_str())
-            .map(|s| normalize_color(s));
+            .map(normalize_color);
 
         let foreground = match foreground {
             Some(f) => f,
@@ -311,25 +310,21 @@ fn parse_vscode_token_colors(token_colors: Option<&Vec<serde_json::Value>>) -> S
             let scope = scope.as_str();
             // Map VS Code scopes to our syntax color fields.
             // More specific scopes should be checked first.
-            if scope_matches(scope, &["keyword", "storage.type", "storage.modifier"]) {
-                if syntax.keyword.is_none() {
-                    syntax.keyword = Some(foreground.clone());
-                }
+            if scope_matches(scope, &["keyword", "storage.type", "storage.modifier"])
+                && syntax.keyword.is_none()
+            {
+                syntax.keyword = Some(foreground.clone());
             }
-            if scope_matches(scope, &["comment", "punctuation.definition.comment"]) {
-                if syntax.comment.is_none() {
-                    syntax.comment = Some(foreground.clone());
-                }
+            if scope_matches(scope, &["comment", "punctuation.definition.comment"])
+                && syntax.comment.is_none()
+            {
+                syntax.comment = Some(foreground.clone());
             }
-            if scope_matches(scope, &["string", "string.quoted"]) {
-                if syntax.string.is_none() {
-                    syntax.string = Some(foreground.clone());
-                }
+            if scope_matches(scope, &["string", "string.quoted"]) && syntax.string.is_none() {
+                syntax.string = Some(foreground.clone());
             }
-            if scope_matches(scope, &["constant.numeric"]) {
-                if syntax.number.is_none() {
-                    syntax.number = Some(foreground.clone());
-                }
+            if scope_matches(scope, &["constant.numeric"]) && syntax.number.is_none() {
+                syntax.number = Some(foreground.clone());
             }
             if scope_matches(
                 scope,
@@ -338,10 +333,9 @@ fn parse_vscode_token_colors(token_colors: Option<&Vec<serde_json::Value>>) -> S
                     "support.function",
                     "meta.function-call",
                 ],
-            ) {
-                if syntax.function.is_none() {
-                    syntax.function = Some(foreground.clone());
-                }
+            ) && syntax.function.is_none()
+            {
+                syntax.function = Some(foreground.clone());
             }
             if scope_matches(
                 scope,
@@ -351,79 +345,66 @@ fn parse_vscode_token_colors(token_colors: Option<&Vec<serde_json::Value>>) -> S
                     "support.class",
                     "entity.name.class",
                 ],
-            ) {
-                if syntax.r#type.is_none() {
-                    syntax.r#type = Some(foreground.clone());
-                }
+            ) && syntax.r#type.is_none()
+            {
+                syntax.r#type = Some(foreground.clone());
             }
-            if scope_matches(scope, &["support.type.builtin"]) {
-                if syntax.type_builtin.is_none() {
-                    syntax.type_builtin = Some(foreground.clone());
-                }
+            if scope_matches(scope, &["support.type.builtin"]) && syntax.type_builtin.is_none() {
+                syntax.type_builtin = Some(foreground.clone());
             }
-            if scope_matches(scope, &["variable", "variable.other"]) {
-                if syntax.variable.is_none() {
-                    syntax.variable = Some(foreground.clone());
-                }
+            if scope_matches(scope, &["variable", "variable.other"]) && syntax.variable.is_none() {
+                syntax.variable = Some(foreground.clone());
             }
             if scope_matches(
                 scope,
                 &["variable.language", "variable.other.readwrite.global"],
-            ) {
-                if syntax.variable_builtin.is_none() {
-                    syntax.variable_builtin = Some(foreground.clone());
-                }
+            ) && syntax.variable_builtin.is_none()
+            {
+                syntax.variable_builtin = Some(foreground.clone());
             }
             if scope_matches(
                 scope,
                 &["variable.other.property", "meta.object-literal.key"],
-            ) {
-                if syntax.property.is_none() {
-                    syntax.property = Some(foreground.clone());
-                }
+            ) && syntax.property.is_none()
+            {
+                syntax.property = Some(foreground.clone());
             }
-            if scope_matches(scope, &["keyword.operator", "punctuation.accessor"]) {
-                if syntax.operator.is_none() {
-                    syntax.operator = Some(foreground.clone());
-                }
+            if scope_matches(scope, &["keyword.operator", "punctuation.accessor"])
+                && syntax.operator.is_none()
+            {
+                syntax.operator = Some(foreground.clone());
             }
             if scope_matches(
                 scope,
                 &["punctuation", "punctuation.definition", "meta.brace"],
-            ) {
-                if syntax.punctuation.is_none() {
-                    syntax.punctuation = Some(foreground.clone());
-                }
+            ) && syntax.punctuation.is_none()
+            {
+                syntax.punctuation = Some(foreground.clone());
             }
-            if scope_matches(scope, &["constant", "constant.language"]) {
-                if syntax.constant.is_none() {
-                    syntax.constant = Some(foreground.clone());
-                }
+            if scope_matches(scope, &["constant", "constant.language"]) && syntax.constant.is_none()
+            {
+                syntax.constant = Some(foreground.clone());
             }
-            if scope_matches(scope, &["constant.language"]) {
-                if syntax.constant_builtin.is_none() {
-                    syntax.constant_builtin = Some(foreground.clone());
-                }
+            if scope_matches(scope, &["constant.language"]) && syntax.constant_builtin.is_none() {
+                syntax.constant_builtin = Some(foreground.clone());
             }
-            if scope_matches(scope, &["entity.other.attribute-name", "meta.attribute"]) {
-                if syntax.attribute.is_none() {
-                    syntax.attribute = Some(foreground.clone());
-                }
+            if scope_matches(scope, &["entity.other.attribute-name", "meta.attribute"])
+                && syntax.attribute.is_none()
+            {
+                syntax.attribute = Some(foreground.clone());
             }
-            if scope_matches(scope, &["entity.name.tag", "meta.tag"]) {
-                if syntax.tag.is_none() {
-                    syntax.tag = Some(foreground.clone());
-                }
+            if scope_matches(scope, &["entity.name.tag", "meta.tag"]) && syntax.tag.is_none() {
+                syntax.tag = Some(foreground.clone());
             }
-            if scope_matches(scope, &["constant.character.escape", "string.escape"]) {
-                if syntax.escape.is_none() {
-                    syntax.escape = Some(foreground.clone());
-                }
+            if scope_matches(scope, &["constant.character.escape", "string.escape"])
+                && syntax.escape.is_none()
+            {
+                syntax.escape = Some(foreground.clone());
             }
-            if scope_matches(scope, &["entity.name.function.macro", "support.macro"]) {
-                if syntax.function_macro.is_none() {
-                    syntax.function_macro = Some(foreground.clone());
-                }
+            if scope_matches(scope, &["entity.name.function.macro", "support.macro"])
+                && syntax.function_macro.is_none()
+            {
+                syntax.function_macro = Some(foreground.clone());
             }
         }
     }
@@ -586,73 +567,60 @@ fn parse_npp_lexer_words_style(
     let name_lower = name.to_lowercase();
 
     // Map Notepad++ style names to our syntax fields.
-    if name_lower.contains("keyword") || name_lower == "instruction word" || name_lower == "word1" {
-        if syntax.keyword.is_none() {
-            syntax.keyword = Some(fg.clone());
-        }
-    }
-    if name_lower.contains("comment") || name_lower == "commentline" || name_lower == "commentdoc" {
-        if syntax.comment.is_none() {
-            syntax.comment = Some(fg.clone());
-        }
-    }
-    if name_lower.contains("string") || name_lower == "character" || name_lower == "verbatim" {
-        if syntax.string.is_none() {
-            syntax.string = Some(fg.clone());
-        }
-    }
-    if name_lower == "number" || name_lower.contains("numeric") {
-        if syntax.number.is_none() {
-            syntax.number = Some(fg.clone());
-        }
-    }
-    if name_lower.contains("function") || name_lower == "word2" || name_lower == "globalclass" {
-        if syntax.function.is_none() {
-            syntax.function = Some(fg.clone());
-        }
-    }
-    if name_lower == "type" || name_lower.contains("class name") || name_lower == "word4" {
-        if syntax.r#type.is_none() {
-            syntax.r#type = Some(fg.clone());
-        }
-    }
-    if name_lower == "variable" || name_lower.contains("variable") {
-        if syntax.variable.is_none() {
-            syntax.variable = Some(fg.clone());
-        }
-    }
-    if name_lower.contains("operator") {
-        if syntax.operator.is_none() {
-            syntax.operator = Some(fg.clone());
-        }
-    }
-    if name_lower.contains("preprocessor") || name_lower.contains("attribute") {
-        if syntax.attribute.is_none() {
-            syntax.attribute = Some(fg.clone());
-        }
-    }
-    if name_lower.contains("tag") || name_lower == "html tag" {
-        if syntax.tag.is_none() {
-            syntax.tag = Some(fg.clone());
-        }
-    }
-    if name_lower.contains("escape") {
-        if syntax.escape.is_none() {
-            syntax.escape = Some(fg.clone());
-        }
-    }
-    if name_lower.contains("delimiter")
-        || name_lower.contains("brace")
-        || name_lower.contains("bracket")
+    if (name_lower.contains("keyword") || name_lower == "instruction word" || name_lower == "word1")
+        && syntax.keyword.is_none()
     {
-        if syntax.punctuation.is_none() {
-            syntax.punctuation = Some(fg.clone());
-        }
+        syntax.keyword = Some(fg.clone());
     }
-    if name_lower.contains("constant") {
-        if syntax.constant.is_none() {
-            syntax.constant = Some(fg.clone());
-        }
+    if (name_lower.contains("comment") || name_lower == "commentline" || name_lower == "commentdoc")
+        && syntax.comment.is_none()
+    {
+        syntax.comment = Some(fg.clone());
+    }
+    if (name_lower.contains("string") || name_lower == "character" || name_lower == "verbatim")
+        && syntax.string.is_none()
+    {
+        syntax.string = Some(fg.clone());
+    }
+    if (name_lower == "number" || name_lower.contains("numeric")) && syntax.number.is_none() {
+        syntax.number = Some(fg.clone());
+    }
+    if (name_lower.contains("function") || name_lower == "word2" || name_lower == "globalclass")
+        && syntax.function.is_none()
+    {
+        syntax.function = Some(fg.clone());
+    }
+    if (name_lower == "type" || name_lower.contains("class name") || name_lower == "word4")
+        && syntax.r#type.is_none()
+    {
+        syntax.r#type = Some(fg.clone());
+    }
+    if (name_lower == "variable" || name_lower.contains("variable")) && syntax.variable.is_none() {
+        syntax.variable = Some(fg.clone());
+    }
+    if name_lower.contains("operator") && syntax.operator.is_none() {
+        syntax.operator = Some(fg.clone());
+    }
+    if (name_lower.contains("preprocessor") || name_lower.contains("attribute"))
+        && syntax.attribute.is_none()
+    {
+        syntax.attribute = Some(fg.clone());
+    }
+    if (name_lower.contains("tag") || name_lower == "html tag") && syntax.tag.is_none() {
+        syntax.tag = Some(fg.clone());
+    }
+    if name_lower.contains("escape") && syntax.escape.is_none() {
+        syntax.escape = Some(fg.clone());
+    }
+    if (name_lower.contains("delimiter")
+        || name_lower.contains("brace")
+        || name_lower.contains("bracket"))
+        && syntax.punctuation.is_none()
+    {
+        syntax.punctuation = Some(fg.clone());
+    }
+    if name_lower.contains("constant") && syntax.constant.is_none() {
+        syntax.constant = Some(fg.clone());
     }
 }
 

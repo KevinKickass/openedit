@@ -52,6 +52,7 @@ pub enum DownloadProgress {
 }
 
 /// Persistent state kept in the application struct.
+#[derive(Default)]
 pub struct UpdaterState {
     /// Receives results from the background check thread.
     rx: Option<mpsc::Receiver<UpdateCheckResult>>,
@@ -63,18 +64,6 @@ pub struct UpdaterState {
     download_rx: Option<mpsc::Receiver<DownloadProgress>>,
     /// Latest download progress (sticky).
     pub download_progress: Option<DownloadProgress>,
-}
-
-impl Default for UpdaterState {
-    fn default() -> Self {
-        Self {
-            rx: None,
-            result: None,
-            dismissed: false,
-            download_rx: None,
-            download_progress: None,
-        }
-    }
 }
 
 impl UpdaterState {

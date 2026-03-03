@@ -125,7 +125,7 @@ pub fn render_status_bar(
         ui.painter().text(
             egui::Pos2::new(vim_x, bar_rect.center().y),
             egui::Align2::CENTER_CENTER,
-            &format!("-- {} --", mode),
+            format!("-- {} --", mode),
             egui::FontId::monospace(12.0),
             vim_color,
         );

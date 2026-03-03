@@ -9,6 +9,12 @@ pub struct WordCounterPlugin {
     word_count: usize,
 }
 
+impl Default for WordCounterPlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WordCounterPlugin {
     pub fn new() -> Self {
         Self { word_count: 0 }
@@ -66,6 +72,12 @@ impl Plugin for WordCounterPlugin {
 /// Plugin that inserts lorem ipsum placeholder text at the cursor.
 pub struct LoremIpsumPlugin;
 
+impl Default for LoremIpsumPlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LoremIpsumPlugin {
     pub fn new() -> Self {
         Self
@@ -121,6 +133,12 @@ impl Plugin for LoremIpsumPlugin {
 
 /// Plugin that provides a timestamp insertion command.
 pub struct TimestampPlugin;
+
+impl Default for TimestampPlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl TimestampPlugin {
     pub fn new() -> Self {

@@ -154,7 +154,7 @@ pub fn parse_manifest(toml_str: &str) -> anyhow::Result<PluginManifest> {
         }
         match cmd.action.as_str() {
             "script" => {
-                if cmd.script.is_none() || cmd.script.as_ref().map_or(true, |s| s.is_empty()) {
+                if cmd.script.is_none() || cmd.script.as_ref().is_none_or(|s| s.is_empty()) {
                     anyhow::bail!(
                         "command '{}' has action=script but no script file specified",
                         cmd.id

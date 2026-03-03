@@ -9,15 +9,10 @@ use egui;
 use openedit_core::PluginManager;
 
 /// State for the plugin management panel.
+#[derive(Default)]
 pub struct PluginPanelState {
     /// Whether the panel window is visible.
     pub visible: bool,
-}
-
-impl Default for PluginPanelState {
-    fn default() -> Self {
-        Self { visible: false }
-    }
 }
 
 /// Actions that the plugin panel can request the application to perform.

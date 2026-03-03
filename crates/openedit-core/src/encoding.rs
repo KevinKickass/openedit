@@ -12,8 +12,9 @@ pub enum EncodingError {
 }
 
 /// Supported encodings for file I/O.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum Encoding {
+    #[default]
     Utf8,
     Utf8Bom,
     Utf16Le,
@@ -65,6 +66,7 @@ impl Encoding {
     }
 
     /// Get the encoding_rs encoder for this encoding.
+    #[allow(clippy::wrong_self_convention)]
     fn to_encoding_rs(&self) -> &'static encoding_rs::Encoding {
         match self {
             Encoding::Utf8 | Encoding::Utf8Bom => encoding_rs::UTF_8,
@@ -152,12 +154,6 @@ impl Encoding {
         let (result, _, _) = enc.encode(text);
         bytes.extend_from_slice(&result);
         bytes
-    }
-}
-
-impl Default for Encoding {
-    fn default() -> Self {
-        Encoding::Utf8
     }
 }
 

@@ -720,23 +720,13 @@ pub fn all_commands() -> Vec<Command> {
 }
 
 /// State for the command palette.
+#[derive(Default)]
 pub struct CommandPaletteState {
     pub open: bool,
     pub query: String,
     pub selected: usize,
     /// Extra dynamic commands (e.g. user-defined themes) appended to the built-in list.
     pub dynamic_commands: Vec<Command>,
-}
-
-impl Default for CommandPaletteState {
-    fn default() -> Self {
-        Self {
-            open: false,
-            query: String::new(),
-            selected: 0,
-            dynamic_commands: Vec::new(),
-        }
-    }
 }
 
 /// Simple fuzzy match: all query characters must appear in the label in order (case insensitive).

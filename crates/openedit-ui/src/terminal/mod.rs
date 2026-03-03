@@ -383,7 +383,7 @@ pub fn render_terminal(ui: &mut egui::Ui, state: &mut TerminalState, font_size: 
                     ui.painter().text(
                         egui::Pos2::new(x, y),
                         egui::Align2::LEFT_TOP,
-                        &ch.to_string(),
+                        ch.to_string(),
                         font_id.clone(),
                         fg,
                     );

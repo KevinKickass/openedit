@@ -116,14 +116,10 @@ pub fn render_hex_view(
     let total_rows = if state.data.is_empty() {
         0
     } else {
-        (state.data.len() + state.bytes_per_row - 1) / state.bytes_per_row
+        state.data.len().div_ceil(state.bytes_per_row)
     };
     let visible_rows = (rect.height() / line_height).ceil() as usize;
-    let max_scroll = if total_rows > visible_rows {
-        total_rows - visible_rows
-    } else {
-        0
-    };
+    let max_scroll = total_rows.saturating_sub(visible_rows);
     state.scroll_offset = state.scroll_offset.min(max_scroll as f32);
 
     let start_row = state.scroll_offset as usize;

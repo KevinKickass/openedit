@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 use openedit_core::cursor::Position;
 use openedit_core::Document;
 
@@ -26,10 +27,22 @@ impl std::fmt::Display for VimMode {
 /// A recorded vim action for the `.` repeat command.
 #[derive(Debug, Clone)]
 enum VimAction {
+    #[allow(dead_code)]
     InsertText(String),
-    Delete { motion: VimMotion, count: usize },
-    Change { motion: VimMotion, count: usize },
-    Yank { motion: VimMotion, count: usize },
+    #[allow(dead_code)]
+    Delete {
+        motion: VimMotion,
+        count: usize,
+    },
+    #[allow(dead_code)]
+    Change {
+        motion: VimMotion,
+        count: usize,
+    },
+    Yank {
+        motion: VimMotion,
+        count: usize,
+    },
     Put,
     DeleteLine(usize),
     YankLine(usize),
@@ -43,6 +56,7 @@ enum VimAction {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 enum VimMotion {
     Word,
     WordEnd,
@@ -74,6 +88,7 @@ pub struct VimState {
     /// Numeric count prefix.
     count: Option<usize>,
     /// Register for yank/delete (default unnamed).
+    #[allow(dead_code)]
     register: char,
     /// Yank register contents.
     pub yank_register: String,
@@ -84,6 +99,7 @@ pub struct VimState {
     /// Text inserted during last insert mode session (for `.` repeat).
     insert_text_buffer: String,
     /// Last insert action's entry method for `.` repeat.
+    #[allow(dead_code)]
     last_insert_entry: Option<VimAction>,
     /// Macro recording state.
     recording_macro: Option<char>,
@@ -101,11 +117,13 @@ impl Default for VimState {
             command_line: String::new(),
             pending_op: None,
             count: None,
+            #[allow(dead_code)]
             register: '"',
             yank_register: String::new(),
             yank_linewise: false,
             last_action: None,
             insert_text_buffer: String::new(),
+            #[allow(dead_code)]
             last_insert_entry: None,
             recording_macro: None,
             macro_buffer: Vec::new(),
@@ -798,7 +816,7 @@ impl VimState {
         }
     }
 
-    fn handle_insert(&mut self, key: &str, doc: &mut Document, modified: &mut bool) -> bool {
+    fn handle_insert(&mut self, key: &str, doc: &mut Document, _modified: &mut bool) -> bool {
         match key {
             "Escape" => {
                 self.mode = VimMode::Normal;
@@ -808,11 +826,11 @@ impl VimState {
                 if !self.insert_text_buffer.is_empty() {
                     self.last_action = Some(VimAction::InsertText(self.insert_text_buffer.clone()));
                 }
-                return true;
+                true
             }
             _ => {
                 // Let normal editor handle it
-                return false;
+                false
             }
         }
     }
@@ -960,27 +978,27 @@ impl VimState {
             "Escape" => {
                 self.mode = VimMode::Normal;
                 self.command_line.clear();
-                return true;
+                true
             }
             "Enter" => {
                 let cmd = self.command_line.clone();
                 self.mode = VimMode::Normal;
                 self.command_line.clear();
                 self.execute_ex_command(&cmd, doc, modified);
-                return true;
+                true
             }
             "Backspace" => {
                 self.command_line.pop();
                 if self.command_line.is_empty() {
                     self.mode = VimMode::Normal;
                 }
-                return true;
+                true
             }
             _ => {
                 if key.len() == 1 && !key.chars().next().unwrap().is_control() {
                     self.command_line.push_str(key);
                 }
-                return true;
+                true
             }
         }
     }
@@ -989,8 +1007,7 @@ impl VimState {
         let cmd = cmd.trim();
 
         // Search commands
-        if cmd.starts_with('/') {
-            let pattern = &cmd[1..];
+        if let Some(pattern) = cmd.strip_prefix('/') {
             if !pattern.is_empty() {
                 let _ = doc.search.set_query(pattern);
                 let text = doc.buffer.to_string();
@@ -1005,8 +1022,7 @@ impl VimState {
             }
             return;
         }
-        if cmd.starts_with('?') {
-            let pattern = &cmd[1..];
+        if let Some(pattern) = cmd.strip_prefix('?') {
             if !pattern.is_empty() {
                 let _ = doc.search.set_query(pattern);
                 let text = doc.buffer.to_string();

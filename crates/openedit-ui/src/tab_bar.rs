@@ -12,18 +12,10 @@ pub enum TabContextAction {
 }
 
 /// Drag state for tab reordering
+#[derive(Default)]
 pub struct TabDragState {
     pub dragging_tab: Option<usize>,
     pub target_index: Option<usize>,
-}
-
-impl Default for TabDragState {
-    fn default() -> Self {
-        Self {
-            dragging_tab: None,
-            target_index: None,
-        }
-    }
 }
 
 /// Renders the tab bar and returns the index of the tab to activate (if changed),
@@ -98,7 +90,7 @@ pub fn render_tab_bar(
             if let Some(dragging_idx) = drag_state.dragging_tab {
                 let cursor_pos = ui.input(|i| i.pointer.interact_pos());
                 if dragging_idx != i
-                    && cursor_pos.map_or(false, |pos| resp.response.rect.contains(pos))
+                    && cursor_pos.is_some_and(|pos| resp.response.rect.contains(pos))
                 {
                     drag_state.target_index = Some(i);
                 }

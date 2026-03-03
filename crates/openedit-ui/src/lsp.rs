@@ -117,21 +117,12 @@ impl Default for ReferencesState {
 }
 
 /// State for the inline rename dialog.
+#[derive(Default)]
 pub struct RenameDialogState {
     pub visible: bool,
     pub input: String,
     /// Whether the text input should request focus on the next frame.
     pub needs_focus: bool,
-}
-
-impl Default for RenameDialogState {
-    fn default() -> Self {
-        Self {
-            visible: false,
-            input: String::new(),
-            needs_focus: false,
-        }
-    }
 }
 
 /// State for a single LSP server connection.
@@ -172,6 +163,12 @@ pub struct LspManager {
     /// Tracks which request IDs are references vs definition requests.
     /// Shared with reader threads so they can disambiguate Location[] responses.
     pending_request_types: Arc<Mutex<HashMap<i64, &'static str>>>,
+}
+
+impl Default for LspManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl LspManager {
@@ -677,26 +674,23 @@ fn read_lsp_messages(
 
         // Handle the message
         if let Some(method) = msg.get("method").and_then(|m| m.as_str()) {
-            match method {
-                "textDocument/publishDiagnostics" => {
-                    if let Some(params) = msg.get("params") {
-                        let uri = params
-                            .get("uri")
-                            .and_then(|u| u.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        let diags = params
-                            .get("diagnostics")
-                            .and_then(|d| d.as_array())
-                            .map(|arr| arr.iter().filter_map(|d| parse_diagnostic(d)).collect())
-                            .unwrap_or_default();
-                        let _ = tx.send(LspEvent::Diagnostics {
-                            uri,
-                            diagnostics: diags,
-                        });
-                    }
+            if method == "textDocument/publishDiagnostics" {
+                if let Some(params) = msg.get("params") {
+                    let uri = params
+                        .get("uri")
+                        .and_then(|u| u.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let diags = params
+                        .get("diagnostics")
+                        .and_then(|d| d.as_array())
+                        .map(|arr| arr.iter().filter_map(parse_diagnostic).collect())
+                        .unwrap_or_default();
+                    let _ = tx.send(LspEvent::Diagnostics {
+                        uri,
+                        diagnostics: diags,
+                    });
                 }
-                _ => {}
             }
         } else if let Some(id) = msg.get("id").and_then(|i| i.as_i64()) {
             // Look up what kind of request this response is for
@@ -812,7 +806,7 @@ fn parse_completion_response(result: &serde_json::Value) -> Option<Vec<LspComple
             let kind = item
                 .get("kind")
                 .and_then(|k| k.as_u64())
-                .map(|k| completion_kind_name(k));
+                .map(completion_kind_name);
             let insert_text = item
                 .get("insertText")
                 .and_then(|t| t.as_str())
@@ -906,10 +900,7 @@ fn parse_locations_response(result: &serde_json::Value) -> Vec<LspLocation> {
         return Vec::new();
     };
 
-    items
-        .iter()
-        .filter_map(|v| parse_single_location(v))
-        .collect()
+    items.iter().filter_map(parse_single_location).collect()
 }
 
 /// Parse a single Location or LocationLink JSON value.
@@ -947,10 +938,8 @@ fn parse_rename_response(result: &serde_json::Value) -> Option<LspWorkspaceEdit>
     if let Some(changes_obj) = result.get("changes").and_then(|c| c.as_object()) {
         for (uri, edits_val) in changes_obj {
             if let Some(edits_arr) = edits_val.as_array() {
-                let edits: Vec<LspTextEdit> = edits_arr
-                    .iter()
-                    .filter_map(|e| parse_text_edit(e))
-                    .collect();
+                let edits: Vec<LspTextEdit> =
+                    edits_arr.iter().filter_map(parse_text_edit).collect();
                 if !edits.is_empty() {
                     changes.insert(uri.clone(), edits);
                 }
@@ -967,10 +956,8 @@ fn parse_rename_response(result: &serde_json::Value) -> Option<LspWorkspaceEdit>
                 .and_then(|u| u.as_str());
             let edits = doc_change.get("edits").and_then(|e| e.as_array());
             if let (Some(uri), Some(edits_arr)) = (uri, edits) {
-                let edits: Vec<LspTextEdit> = edits_arr
-                    .iter()
-                    .filter_map(|e| parse_text_edit(e))
-                    .collect();
+                let edits: Vec<LspTextEdit> =
+                    edits_arr.iter().filter_map(parse_text_edit).collect();
                 if !edits.is_empty() {
                     changes.entry(uri.to_string()).or_default().extend(edits);
                 }

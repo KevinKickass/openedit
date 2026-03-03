@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 /// State for the "Go to File" (Ctrl+P) fuzzy file finder dialog.
+#[derive(Default)]
 pub struct GoToFileState {
     pub open: bool,
     pub query: String,
@@ -11,18 +12,6 @@ pub struct GoToFileState {
     pub files: Vec<PathBuf>,
     /// Indices into `files` that match the current query.
     pub filtered: Vec<usize>,
-}
-
-impl Default for GoToFileState {
-    fn default() -> Self {
-        Self {
-            open: false,
-            query: String::new(),
-            selected: 0,
-            files: Vec::new(),
-            filtered: Vec::new(),
-        }
-    }
 }
 
 impl GoToFileState {

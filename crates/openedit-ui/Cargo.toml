@@ -30,3 +30,6 @@ url.workspace = true
 quick-xml.workspace = true
 ureq.workspace = true
 printpdf.workspace = true
+
+[lints]
+workspace = true

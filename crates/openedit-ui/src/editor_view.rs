@@ -31,6 +31,7 @@ pub fn char_width_for_font(font_size: f32) -> f32 {
 }
 
 /// Persistent state for the editor view (e.g., drag tracking).
+#[derive(Default)]
 pub struct EditorViewState {
     pub dragging: bool,
     /// Starting document position for Alt+drag block/column selection.
@@ -44,19 +45,6 @@ pub struct EditorViewState {
     pub hover_request: Option<(Position, Pos2)>,
     /// Set when user hovers over a diagnostic squiggle — contains the message to display.
     pub diagnostic_hover: Option<(String, Pos2)>,
-}
-
-impl Default for EditorViewState {
-    fn default() -> Self {
-        Self {
-            dragging: false,
-            block_select_start: None,
-            block_selecting: false,
-            ctrl_click_pos: None,
-            hover_request: None,
-            diagnostic_hover: None,
-        }
-    }
 }
 
 /// Extra rendering context passed from app to editor view.
@@ -357,7 +345,7 @@ pub fn render_editor(
         };
 
         let spans = line_highlights.get(vr.line_idx);
-        if spans.map_or(true, |s| s.is_empty()) {
+        if spans.is_none_or(|s| s.is_empty()) {
             // No syntax highlighting -- render plain text
             let visible_text: String = display
                 .chars()
@@ -389,11 +377,7 @@ pub fn render_editor(
         // Fold ellipsis only on first visual row
         if vr.is_first && doc.folding.is_folded(vr.line_idx) {
             let display_len = display.chars().count();
-            let ellipsis_col = if display_len > visible_text_start {
-                display_len - visible_text_start
-            } else {
-                0
-            };
+            let ellipsis_col = display_len.saturating_sub(visible_text_start);
             let ellipsis_x = text_left + 4.0 + ellipsis_col as f32 * char_width + char_width;
             ui.painter().text(
                 Pos2::new(ellipsis_x, y),
@@ -543,7 +527,7 @@ pub fn render_editor(
     }
 
     // Bracket pair colorization
-    let do_bracket_colors = render_ctx.map_or(false, |c| c.bracket_colorization);
+    let do_bracket_colors = render_ctx.is_some_and(|c| c.bracket_colorization);
     if do_bracket_colors {
         // Collect all lines for bracket depth calculation
         let all_line_strs: Vec<String> = (0..total_lines)
@@ -1070,7 +1054,7 @@ fn handle_keyboard_input(
     let is_recording = macro_rec.is_recording();
 
     // Check vim mode up front so we can use it inside the closure
-    let vim_enabled = vim_state.as_ref().map_or(false, |v| v.enabled);
+    let vim_enabled = vim_state.as_ref().is_some_and(|v| v.enabled);
 
     // Collect events first so we can process them with vim_state outside the closure.
     let events = ui.input(|input| input.events.clone());
@@ -1133,14 +1117,12 @@ fn handle_keyboard_input(
                     }
                     egui::Event::Paste(text) => {
                         // In insert mode, allow paste normally
-                        if vim_mode == VimMode::Insert {
-                            if !text.is_empty() {
-                                vim.record_insert_text(text);
-                                doc.insert_text(text);
-                                modified = true;
-                                if is_recording {
-                                    pending_macro_actions.push(MacroAction::Paste(text.clone()));
-                                }
+                        if vim_mode == VimMode::Insert && !text.is_empty() {
+                            vim.record_insert_text(text);
+                            doc.insert_text(text);
+                            modified = true;
+                            if is_recording {
+                                pending_macro_actions.push(MacroAction::Paste(text.clone()));
                             }
                         }
                         // In other modes, vim handles yank/put internally
@@ -1758,7 +1740,7 @@ fn handle_text_input(
                 doc.move_cursor_left(false);
                 *modified = true;
             }
-        } else if let Some(_) = match ch {
+        } else if (match ch {
             ')' | ']' | '}' => {
                 let cursor = doc.cursors.primary();
                 let offset = doc
@@ -1776,7 +1758,9 @@ fn handle_text_input(
                 }
             }
             _ => None,
-        } {
+        })
+        .is_some()
+        {
             // Skip over existing closing bracket
             doc.move_cursor_right(false);
         } else {
@@ -1906,8 +1890,7 @@ fn ensure_cursor_visible_wrapped(
                 all_visual_rows
                     .iter()
                     .enumerate()
-                    .filter(|(_, vr)| vr.line_idx == cursor_line)
-                    .last()
+                    .rfind(|(_, vr)| vr.line_idx == cursor_line)
                     .map(|(i, _)| i)
             })
     } else {

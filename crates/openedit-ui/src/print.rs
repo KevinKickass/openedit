@@ -74,6 +74,7 @@ impl Default for PrintConfig {
 // ── Print dialog state ──────────────────────────────────────────────
 
 /// State for the print dialog UI.
+#[derive(Default)]
 pub struct PrintDialogState {
     /// Whether the dialog is open.
     pub open: bool,
@@ -83,17 +84,6 @@ pub struct PrintDialogState {
     pub export_only: bool,
     /// Status / error message to show in the dialog.
     pub status_message: Option<String>,
-}
-
-impl Default for PrintDialogState {
-    fn default() -> Self {
-        Self {
-            open: false,
-            config: PrintConfig::default(),
-            export_only: false,
-            status_message: None,
-        }
-    }
 }
 
 // ── Page break calculation ──────────────────────────────────────────
@@ -121,7 +111,7 @@ pub fn total_pages(total_lines: usize, config: &PrintConfig) -> usize {
     if total_lines == 0 {
         return 1;
     }
-    (total_lines + lpp - 1) / lpp
+    total_lines.div_ceil(lpp)
 }
 
 // ── PDF generation ──────────────────────────────────────────────────

@@ -64,6 +64,7 @@ impl Document {
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(text: &str) -> Self {
         let line_ending = LineEnding::detect(text);
         // Normalize to LF internally — we'll convert back on save

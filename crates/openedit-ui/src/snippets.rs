@@ -602,6 +602,12 @@ pub struct SnippetEngine {
     pub state: SnippetState,
 }
 
+impl Default for SnippetEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SnippetEngine {
     pub fn new() -> Self {
         let builtin = builtin_snippets();
@@ -632,7 +638,7 @@ impl SnippetEngine {
         while word_start > 0
             && line_chars
                 .get(word_start - 1)
-                .map_or(false, |c| c.is_alphanumeric() || *c == '_')
+                .is_some_and(|c| c.is_alphanumeric() || *c == '_')
         {
             word_start -= 1;
         }

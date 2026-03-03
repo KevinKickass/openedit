@@ -394,7 +394,7 @@ fn compute_line_diff(old: &[&str], new: &[&str]) -> Vec<(usize, LineDiffStatus)>
             }
 
             match (found_in_new, found_in_old) {
-                (Some(k), _) if found_in_old.map_or(true, |ko| k <= ko) => {
+                (Some(k), _) if found_in_old.is_none_or(|ko| k <= ko) => {
                     ni += k;
                     matched_old[oi] = true;
                     matched_new[ni] = true;

@@ -102,3 +102,10 @@ anyhow.workspace = true
 [[bin]]
 name = "openedit"
 path = "src/main.rs"
+
+[workspace.lints.clippy]
+too_many_arguments = "allow"
+type_complexity = "allow"
+
+[lints]
+workspace = true

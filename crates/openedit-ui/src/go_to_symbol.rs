@@ -2,6 +2,7 @@ use egui;
 use openedit_core::syntax::Symbol;
 
 /// State for the Go to Symbol dialog.
+#[derive(Default)]
 pub struct GoToSymbolState {
     /// Whether the dialog is open.
     pub open: bool,
@@ -11,17 +12,6 @@ pub struct GoToSymbolState {
     pub selected: usize,
     /// All symbols extracted from the current document.
     pub symbols: Vec<Symbol>,
-}
-
-impl Default for GoToSymbolState {
-    fn default() -> Self {
-        Self {
-            open: false,
-            query: String::new(),
-            selected: 0,
-            symbols: Vec::new(),
-        }
-    }
 }
 
 /// Simple fuzzy match: all query characters must appear in the label in order (case insensitive).

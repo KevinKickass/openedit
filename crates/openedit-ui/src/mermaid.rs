@@ -561,8 +561,8 @@ fn parse_sequence(src: &str) -> Option<SequenceDiagram> {
         // participant / actor declarations
         if line.starts_with("participant ") || line.starts_with("actor ") {
             let name = line
-                .splitn(2, ' ')
-                .nth(1)
+                .split_once(' ')
+                .map(|x| x.1)
                 .unwrap_or("")
                 .trim()
                 .trim_end_matches(';');
