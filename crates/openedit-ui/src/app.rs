@@ -1,5 +1,6 @@
 use crate::autocomplete::AutocompleteState;
 use crate::breadcrumb;
+use crate::builtin_plugins;
 use crate::command_palette::{self, CommandPaletteState};
 use crate::config::{self, EditorConfig};
 use crate::diff_view::{self, DiffViewState};
@@ -23,6 +24,7 @@ use crate::vim::VimState;
 use eframe::egui;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use openedit_core::document::DocId;
+use openedit_core::plugin::{EditorEvent, PluginAction, PluginContext, PluginManager};
 use openedit_core::syntax::SyntaxEngine;
 use openedit_core::{Buffer, Document, Encoding};
 use std::collections::HashSet;
@@ -167,6 +169,13 @@ pub struct OpenEditApp {
     references_state: ReferencesState,
     /// LSP Rename dialog state.
     rename_dialog: RenameDialogState,
+    /// Plugin manager for the extensibility system.
+    plugin_manager: PluginManager,
+    /// Status message shown from plugin actions (transient).
+    plugin_status_message: Option<String>,
+    plugin_status_message_time: Option<std::time::Instant>,
+    /// Track the last active tab index for TabChanged event broadcasting.
+    last_active_tab: usize,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -312,7 +321,19 @@ impl OpenEditApp {
             macro_script_doc_id: None,
             references_state: ReferencesState::default(),
             rename_dialog: RenameDialogState::default(),
+            plugin_manager: PluginManager::new(),
+            plugin_status_message: None,
+            plugin_status_message_time: None,
+            last_active_tab: 0,
         };
+
+        // Register built-in plugins
+        let _ = app.plugin_manager.register(Box::new(builtin_plugins::WordCounterPlugin::new()));
+        let _ = app.plugin_manager.register(Box::new(builtin_plugins::LoremIpsumPlugin::new()));
+        let _ = app.plugin_manager.register(Box::new(builtin_plugins::TimestampPlugin::new()));
+
+        // Broadcast startup event
+        app.plugin_manager.broadcast_event(&EditorEvent::Startup);
 
         // Load saved macros from disk
         app.macro_recorder.load_macros_from_disk();
@@ -359,6 +380,11 @@ impl OpenEditApp {
                         self.git_branch = self.git_state.branch.clone();
                     }
                 }
+
+                // Broadcast FileOpened event to plugins
+                self.plugin_manager.broadcast_event(&EditorEvent::FileOpened(
+                    path.to_string_lossy().into_owned(),
+                ));
 
                 self.save_session();
             }
@@ -554,6 +580,7 @@ impl OpenEditApp {
         };
 
         if let Some(ref path) = doc.path {
+            let path_str = path.to_string_lossy().into_owned();
             let bytes = doc.bytes_for_save();
             match std::fs::write(path, &bytes) {
                 Ok(()) => {
@@ -563,6 +590,8 @@ impl OpenEditApp {
                     // Refresh git status after save
                     self.git_state.refresh_statuses();
                     self.git_state.invalidate_file_cache();
+                    // Broadcast FileSaved event to plugins
+                    self.plugin_manager.broadcast_event(&EditorEvent::FileSaved(path_str));
                 }
                 Err(e) => {
                     log::error!("Failed to save {}: {}", path.display(), e);
@@ -1515,6 +1544,16 @@ impl OpenEditApp {
         if idx >= self.documents.len() {
             return;
         }
+        // Broadcast FileClosed event to plugins
+        let tab_name = self.documents[idx]
+            .path
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|| {
+                format!("Untitled-{}", self.documents[idx].id.0)
+            });
+        self.plugin_manager.broadcast_event(&EditorEvent::FileClosed(tab_name));
+
         // Clear macro script tracking if closing that tab
         if self.is_macro_script_tab(idx) {
             self.macro_script_doc_id = None;
@@ -1531,9 +1570,12 @@ impl OpenEditApp {
         self.save_session();
     }
 
-    /// Update the command palette's dynamic commands with user-defined theme entries.
+    /// Update the command palette's dynamic commands with user-defined theme entries
+    /// and plugin-provided commands.
     fn update_dynamic_theme_commands(&mut self) {
         self.command_palette.dynamic_commands.clear();
+
+        // Add user-defined theme entries
         for name in self.theme_registry.all_names() {
             if self.theme_registry.is_user_theme(&name) {
                 let config_key = name
@@ -1549,6 +1591,26 @@ impl OpenEditApp {
                 );
             }
         }
+
+        // Add plugin-provided commands
+        for (plugin_id, pcmd) in self.plugin_manager.all_commands() {
+            self.command_palette.dynamic_commands.push(
+                command_palette::Command {
+                    id: format!("plugin.{}.{}", plugin_id, pcmd.id),
+                    label: pcmd.label.clone(),
+                    shortcut: "",
+                },
+            );
+        }
+
+        // Add plugin management commands
+        self.command_palette.dynamic_commands.push(
+            command_palette::Command {
+                id: "plugins.list".into(),
+                label: "Plugins: List Installed".into(),
+                shortcut: "",
+            },
+        );
     }
 
     /// Build an `EditorConfig` from the current app state.
@@ -1577,6 +1639,24 @@ impl OpenEditApp {
 
 impl eframe::App for OpenEditApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Broadcast TabChanged event when the active tab changes
+        if self.active_tab != self.last_active_tab {
+            let path = self.documents
+                .get(self.active_tab)
+                .and_then(|d| d.path.as_ref())
+                .map(|p| p.to_string_lossy().into_owned());
+            self.plugin_manager.broadcast_event(&EditorEvent::TabChanged(path));
+            self.last_active_tab = self.active_tab;
+        }
+
+        // Clear plugin status message after 4 seconds
+        if let Some(ref time) = self.plugin_status_message_time {
+            if time.elapsed() > std::time::Duration::from_secs(4) {
+                self.plugin_status_message = None;
+                self.plugin_status_message_time = None;
+            }
+        }
+
         // Poll LSP events
         self.lsp_manager.poll_events();
 
