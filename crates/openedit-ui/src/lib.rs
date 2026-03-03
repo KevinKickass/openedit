@@ -1,6 +1,7 @@
 pub mod app;
 pub mod autocomplete;
 pub mod bracket_colors;
+pub mod breadcrumb;
 pub mod command_palette;
 pub mod config;
 pub mod diff_view;

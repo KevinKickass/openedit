@@ -1,4 +1,5 @@
 use crate::autocomplete::AutocompleteState;
+use crate::breadcrumb;
 use crate::command_palette::{self, CommandPaletteState};
 use crate::config::{self, EditorConfig};
 use crate::diff_view::{self, DiffViewState};
@@ -10,7 +11,6 @@ use crate::go_to_file::{self, GoToFileState};
 use crate::go_to_symbol::{self, GoToSymbolState};
 use crate::hex_view::{self, HexViewState};
 use crate::lsp::LspManager;
-use url::Url;
 use crate::macro_recorder::{MacroAction, MacroRecorder};
 use crate::search_panel::{self, SearchPanelState};
 use crate::sidebar::{self, SidebarState};
@@ -23,10 +23,11 @@ use crate::vim::VimState;
 use eframe::egui;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use openedit_core::syntax::SyntaxEngine;
-use openedit_core::{Document, Encoding};
+use openedit_core::{Buffer, Document, Encoding};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::mpsc;
+use url::Url;
 
 /// Main application state.
 pub struct OpenEditApp {
@@ -76,6 +77,8 @@ pub struct OpenEditApp {
     sidebar_state: SidebarState,
     /// Split view state.
     split: SplitState,
+    /// Tab drag state for reordering.
+    tab_drag_state: tab_bar::TabDragState,
     /// Whether to show Markdown preview panel.
     show_markdown_preview: bool,
     /// Scroll offset for Markdown preview.
@@ -86,6 +89,8 @@ pub struct OpenEditApp {
     hex_view_state: HexViewState,
     /// Function list panel state.
     function_list_state: FunctionListState,
+    /// Breadcrumb bar state.
+    breadcrumb_state: breadcrumb::BreadcrumbState,
     /// Diff/compare view state.
     diff_state: DiffViewState,
     /// Column editor dialog state.
@@ -182,15 +187,17 @@ impl Default for SplitState {
 impl OpenEditApp {
     pub fn new(files_to_open: Vec<PathBuf>) -> Self {
         let (tx, rx) = mpsc::channel();
-        let watcher = notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
-            if let Ok(event) = res {
-                if matches!(event.kind, notify::EventKind::Modify(_)) {
-                    for path in event.paths {
-                        let _ = tx.send(path);
+        let watcher =
+            notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
+                if let Ok(event) = res {
+                    if matches!(event.kind, notify::EventKind::Modify(_)) {
+                        for path in event.paths {
+                            let _ = tx.send(path);
+                        }
                     }
                 }
-            }
-        }).ok();
+            })
+            .ok();
 
         // Load persistent configuration
         let cfg = config::load_config();
@@ -227,11 +234,13 @@ impl OpenEditApp {
             go_to_symbol_state: GoToSymbolState::default(),
             sidebar_state,
             split: SplitState::default(),
+            tab_drag_state: tab_bar::TabDragState::default(),
             show_markdown_preview: false,
             markdown_preview_scroll: 0.0,
             macro_recorder: MacroRecorder::new(),
             hex_view_state: HexViewState::default(),
             function_list_state: FunctionListState::default(),
+            breadcrumb_state: breadcrumb::BreadcrumbState::default(),
             diff_state: DiffViewState::default(),
             column_editor_open: false,
             column_editor_mode: ColumnEditorMode::Text,
@@ -278,45 +287,35 @@ impl OpenEditApp {
     }
 
     fn open_file(&mut self, path: PathBuf) {
-        match std::fs::read(&path) {
-            Ok(bytes) => {
-                let encoding = Encoding::detect(&bytes);
-                match encoding.decode(&bytes) {
-                    Ok(text) => {
-                        let mut doc = Document::from_str(&text);
-                        doc.path = Some(path.clone());
-                        doc.encoding = encoding;
+        match Buffer::load_file(&path) {
+            Ok(buffer) => {
+                let mut doc = Document::new();
+                doc.buffer = buffer;
+                doc.path = Some(path.clone());
 
-                        // Detect language from extension
-                        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                            doc.language = Some(language_from_extension(ext));
-                        }
+                // Detect language from extension
+                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    doc.language = Some(language_from_extension(ext));
+                }
 
-                        self.documents.push(doc);
-                        self.active_tab = self.documents.len() - 1;
-                        self.watch_path(&path);
+                self.documents.push(doc);
+                self.active_tab = self.documents.len() - 1;
+                self.watch_path(&path);
 
-                        // Add to recent files
-                        self.recent_files.retain(|p| p != &path);
-                        self.recent_files.insert(0, path.clone());
-                        self.recent_files.truncate(20);
+                // Add to recent files
+                self.recent_files.retain(|p| p != &path);
+                self.recent_files.insert(0, path.clone());
+                self.recent_files.truncate(20);
 
-                        // Initialize git if not already done
-                        if self.git_branch.is_none() {
-                            if let Some(parent) = path.parent() {
-                {
-                                    self.git_state.init(parent);
-                                    self.git_branch = self.git_state.branch.clone();
-                                }
-                            }
-                        }
-
-                        self.save_session();
-                    }
-                    Err(e) => {
-                        log::error!("Failed to decode {}: {}", path.display(), e);
+                // Initialize git if not already done
+                if self.git_branch.is_none() {
+                    if let Some(parent) = path.parent() {
+                        self.git_state.init(parent);
+                        self.git_branch = self.git_state.branch.clone();
                     }
                 }
+
+                self.save_session();
             }
             Err(e) => {
                 log::error!("Failed to read {}: {}", path.display(), e);
@@ -360,14 +359,18 @@ impl OpenEditApp {
             .map(|p| p.to_string_lossy().into_owned())
             .collect();
 
-        let tab_states: Vec<serde_json::Value> = self.documents.iter().map(|d| {
-            serde_json::json!({
-                "cursor_line": d.cursors.primary().position.line,
-                "cursor_col": d.cursors.primary().position.col,
-                "scroll_line": d.scroll_line,
-                "scroll_col": d.scroll_col,
+        let tab_states: Vec<serde_json::Value> = self
+            .documents
+            .iter()
+            .map(|d| {
+                serde_json::json!({
+                    "cursor_line": d.cursors.primary().position.line,
+                    "cursor_col": d.cursors.primary().position.col,
+                    "scroll_line": d.scroll_line,
+                    "scroll_col": d.scroll_col,
+                })
             })
-        }).collect();
+            .collect();
 
         let session = serde_json::json!({
             "files": open_files,
@@ -590,7 +593,9 @@ impl OpenEditApp {
                             _ => None,
                         } {
                             let cursor = doc.cursors.primary();
-                            let offset = doc.buffer.line_col_to_char(cursor.position.line, cursor.position.col);
+                            let offset = doc
+                                .buffer
+                                .line_col_to_char(cursor.position.line, cursor.position.col);
                             let next_char = if offset < doc.buffer.len_chars() {
                                 Some(doc.buffer.char_at(offset))
                             } else {
@@ -608,7 +613,9 @@ impl OpenEditApp {
                             }
                         } else if matches!(ch, ')' | ']' | '}') {
                             let cursor = doc.cursors.primary();
-                            let offset = doc.buffer.line_col_to_char(cursor.position.line, cursor.position.col);
+                            let offset = doc
+                                .buffer
+                                .line_col_to_char(cursor.position.line, cursor.position.col);
                             let next_char = if offset < doc.buffer.len_chars() {
                                 Some(doc.buffer.char_at(offset))
                             } else {
@@ -629,7 +636,12 @@ impl OpenEditApp {
                 MacroAction::Paste(text) => {
                     doc.insert_text(text);
                 }
-                MacroAction::KeyAction { key, ctrl, shift, alt } => {
+                MacroAction::KeyAction {
+                    key,
+                    ctrl,
+                    shift,
+                    alt,
+                } => {
                     Self::replay_key_action(doc, key, *ctrl, *shift, *alt);
                 }
             }
@@ -647,9 +659,15 @@ impl OpenEditApp {
                 }
             }
             // Line operations
-            "ArrowUp" if alt => { doc.move_line_up(); }
-            "ArrowDown" if alt => { doc.move_line_down(); }
-            "K" if ctrl && shift => { doc.delete_line(); }
+            "ArrowUp" if alt => {
+                doc.move_line_up();
+            }
+            "ArrowDown" if alt => {
+                doc.move_line_down();
+            }
+            "K" if ctrl && shift => {
+                doc.delete_line();
+            }
             // Navigation
             "ArrowLeft" if ctrl => doc.move_cursor_word_left(shift),
             "ArrowRight" if ctrl => doc.move_cursor_word_right(shift),
@@ -664,20 +682,38 @@ impl OpenEditApp {
             "PageUp" => doc.move_cursor_page_up(30, shift),
             "PageDown" => doc.move_cursor_page_down(30, shift),
             // Editing
-            "Backspace" if ctrl => { doc.delete_word_left(); }
-            "Backspace" => { doc.backspace(); }
-            "Delete" if ctrl => { doc.delete_word_right(); }
-            "Delete" => { doc.delete_forward(); }
-            "Enter" => { doc.insert_newline_with_indent(); }
-            "Tab" if shift => { doc.unindent(); }
-            "Tab" => { doc.insert_text("    "); }
+            "Backspace" if ctrl => {
+                doc.delete_word_left();
+            }
+            "Backspace" => {
+                doc.backspace();
+            }
+            "Delete" if ctrl => {
+                doc.delete_word_right();
+            }
+            "Delete" => {
+                doc.delete_forward();
+            }
+            "Enter" => {
+                doc.insert_newline_with_indent();
+            }
+            "Tab" if shift => {
+                doc.unindent();
+            }
+            "Tab" => {
+                doc.insert_text("    ");
+            }
             // Selection/undo
             "A" if ctrl => doc.select_all(),
             "Z" if ctrl && shift => doc.redo(),
             "Z" if ctrl => doc.undo(),
             "Y" if ctrl => doc.redo(),
-            "Slash" if ctrl => { doc.toggle_comment(); }
-            "D" if ctrl => { doc.select_next_occurrence(); }
+            "Slash" if ctrl => {
+                doc.toggle_comment();
+            }
+            "D" if ctrl => {
+                doc.select_next_occurrence();
+            }
             "Escape" => {
                 if doc.cursors.cursor_count() > 1 {
                     doc.cursors.clear_extra_cursors();
@@ -795,10 +831,7 @@ impl OpenEditApp {
             "nav.go_to_symbol" => {
                 if let Some(doc) = self.documents.get(self.active_tab) {
                     let source = doc.buffer.to_string();
-                    let lang_key = doc
-                        .language
-                        .as_deref()
-                        .and_then(SyntaxEngine::language_key);
+                    let lang_key = doc.language.as_deref().and_then(SyntaxEngine::language_key);
                     if let Some(key) = lang_key {
                         self.go_to_symbol_state.symbols =
                             self.syntax_engine.extract_symbols(&source, key);
@@ -906,7 +939,10 @@ impl OpenEditApp {
             "view.toggle_theme" => {
                 // Cycle through themes
                 let names = EditorTheme::all_names();
-                let current_idx = names.iter().position(|n| *n == self.theme.name).unwrap_or(0);
+                let current_idx = names
+                    .iter()
+                    .position(|n| *n == self.theme.name)
+                    .unwrap_or(0);
                 let next_idx = (current_idx + 1) % names.len();
                 self.theme = EditorTheme::by_name(names[next_idx]);
                 self.save_config_state();
@@ -1067,13 +1103,9 @@ impl OpenEditApp {
     fn refresh_function_list_symbols(&mut self) {
         if let Some(doc) = self.documents.get(self.active_tab) {
             let source = doc.buffer.to_string();
-            let lang_key = doc
-                .language
-                .as_deref()
-                .and_then(SyntaxEngine::language_key);
+            let lang_key = doc.language.as_deref().and_then(SyntaxEngine::language_key);
             if let Some(key) = lang_key {
-                self.function_list_state.symbols =
-                    self.syntax_engine.extract_symbols(&source, key);
+                self.function_list_state.symbols = self.syntax_engine.extract_symbols(&source, key);
             } else {
                 self.function_list_state.symbols.clear();
             }
@@ -1142,7 +1174,10 @@ impl eframe::App for OpenEditApp {
             // Navigate to definition
             if let Ok(url) = Url::parse(&loc.uri) {
                 if let Ok(path) = url.to_file_path() {
-                    let existing = self.documents.iter().position(|d| d.path.as_ref() == Some(&path));
+                    let existing = self
+                        .documents
+                        .iter()
+                        .position(|d| d.path.as_ref() == Some(&path));
                     if let Some(tab_idx) = existing {
                         self.active_tab = tab_idx;
                     } else {
@@ -1206,7 +1241,9 @@ impl eframe::App for OpenEditApp {
 
         // Handle drag & drop files
         let dropped: Vec<PathBuf> = ctx.input(|i| {
-            i.raw.dropped_files.iter()
+            i.raw
+                .dropped_files
+                .iter()
                 .filter_map(|f| f.path.clone())
                 .collect()
         });
@@ -1266,7 +1303,10 @@ impl eframe::App for OpenEditApp {
             let shift = input.modifiers.shift;
 
             for event in &input.events {
-                if let egui::Event::Key { key, pressed: true, .. } = event {
+                if let egui::Event::Key {
+                    key, pressed: true, ..
+                } = event
+                {
                     match key {
                         egui::Key::F11 => toggle_zen = true,
                         egui::Key::Backslash if ctrl => toggle_split = true,
@@ -1481,7 +1521,13 @@ impl eframe::App for OpenEditApp {
         let tabs: Vec<(String, bool, Option<String>)> = self
             .documents
             .iter()
-            .map(|d| (d.display_name(), d.modified, d.path.as_ref().map(|p| p.display().to_string())))
+            .map(|d| {
+                (
+                    d.display_name(),
+                    d.modified,
+                    d.path.as_ref().map(|p| p.display().to_string()),
+                )
+            })
             .collect();
 
         // ── Menu bar ──────────────────────────────────────────────
@@ -1602,15 +1648,36 @@ impl eframe::App for OpenEditApp {
                             ui.close_menu();
                         }
                         ui.separator();
-                        if ui.button(if self.show_minimap { "✓ Minimap" } else { "  Minimap" }).clicked() {
+                        if ui
+                            .button(if self.show_minimap {
+                                "✓ Minimap"
+                            } else {
+                                "  Minimap"
+                            })
+                            .clicked()
+                        {
                             self.execute_command("view.toggle_minimap");
                             ui.close_menu();
                         }
-                        if ui.button(if self.show_line_numbers { "✓ Line Numbers" } else { "  Line Numbers" }).clicked() {
+                        if ui
+                            .button(if self.show_line_numbers {
+                                "✓ Line Numbers"
+                            } else {
+                                "  Line Numbers"
+                            })
+                            .clicked()
+                        {
                             self.show_line_numbers = !self.show_line_numbers;
                             ui.close_menu();
                         }
-                        if ui.button(if self.word_wrap { "✓ Word Wrap" } else { "  Word Wrap" }).clicked() {
+                        if ui
+                            .button(if self.word_wrap {
+                                "✓ Word Wrap"
+                            } else {
+                                "  Word Wrap"
+                            })
+                            .clicked()
+                        {
                             self.execute_command("view.toggle_word_wrap");
                             ui.close_menu();
                         }
@@ -1704,7 +1771,14 @@ impl eframe::App for OpenEditApp {
                                 }
                             }
                         });
-                        if ui.button(if self.vim_state.enabled { "✓ Vim Mode" } else { "  Vim Mode" }).clicked() {
+                        if ui
+                            .button(if self.vim_state.enabled {
+                                "✓ Vim Mode"
+                            } else {
+                                "  Vim Mode"
+                            })
+                            .clicked()
+                        {
                             self.execute_command("edit.toggle_vim_mode");
                             ui.close_menu();
                         }
@@ -1734,9 +1808,23 @@ impl eframe::App for OpenEditApp {
                                 }
                             }
                         });
-                        if ui.button(if self.auto_save { "✓ Auto Save" } else { "  Auto Save" }).clicked() {
+                        if ui
+                            .button(if self.auto_save {
+                                "✓ Auto Save"
+                            } else {
+                                "  Auto Save"
+                            })
+                            .clicked()
+                        {
                             self.auto_save = !self.auto_save;
-                            log::info!("Auto Save: {}", if self.auto_save { "enabled" } else { "disabled" });
+                            log::info!(
+                                "Auto Save: {}",
+                                if self.auto_save {
+                                    "enabled"
+                                } else {
+                                    "disabled"
+                                }
+                            );
                             ui.close_menu();
                         }
                     });
@@ -1777,7 +1865,8 @@ impl eframe::App for OpenEditApp {
                     );
 
                     let empty_diffs: Vec<(usize, crate::git::LineDiffStatus)> = Vec::new();
-                    let empty_blame: std::collections::HashMap<usize, String> = std::collections::HashMap::new();
+                    let empty_blame: std::collections::HashMap<usize, String> =
+                        std::collections::HashMap::new();
                     let empty_diags: Vec<crate::lsp::LspDiagnostic> = Vec::new();
                     let render_context = EditorRenderContext {
                         git_line_diffs: &empty_diffs,
@@ -1789,11 +1878,19 @@ impl eframe::App for OpenEditApp {
 
                     if let Some(doc) = self.documents.get_mut(self.active_tab) {
                         editor_view::render_editor(
-                            &mut zen_ui, doc, &self.theme, false,
-                            &mut self.editor_view_state, &mut self.syntax_engine,
-                            self.font_size, self.show_whitespace, false,
-                            &mut self.autocomplete, self.word_wrap,
-                            &mut self.macro_recorder, Some(&render_context),
+                            &mut zen_ui,
+                            doc,
+                            &self.theme,
+                            false,
+                            &mut self.editor_view_state,
+                            &mut self.syntax_engine,
+                            self.font_size,
+                            self.show_whitespace,
+                            false,
+                            &mut self.autocomplete,
+                            self.word_wrap,
+                            &mut self.macro_recorder,
+                            Some(&render_context),
                         );
                     }
 
@@ -1812,7 +1909,9 @@ impl eframe::App for OpenEditApp {
 
                     // Command palette still works in zen mode
                     if self.command_palette.open {
-                        if let Some(cmd_id) = command_palette::render_command_palette(ctx, &mut self.command_palette) {
+                        if let Some(cmd_id) =
+                            command_palette::render_command_palette(ctx, &mut self.command_palette)
+                        {
                             self.execute_command(cmd_id);
                         }
                     }
@@ -1822,7 +1921,13 @@ impl eframe::App for OpenEditApp {
                 }
 
                 // Tab bar
-                let tab_response = tab_bar::render_tab_bar(ui, &tabs, self.active_tab, &self.theme);
+                let tab_response = tab_bar::render_tab_bar(
+                    ui,
+                    &tabs,
+                    self.active_tab,
+                    &self.theme,
+                    &mut self.tab_drag_state,
+                );
 
                 if let Some(idx) = tab_response.activate {
                     if idx == usize::MAX {
@@ -1837,14 +1942,28 @@ impl eframe::App for OpenEditApp {
                     self.close_tab(idx);
                 }
 
+                // Handle tab reordering
+                if let Some((from_idx, to_idx)) = tab_response.reorder {
+                    if from_idx < self.documents.len() && to_idx < self.documents.len() {
+                        let doc = self.documents.remove(from_idx);
+                        self.documents.insert(to_idx, doc);
+                        if self.active_tab == from_idx {
+                            self.active_tab = to_idx;
+                        } else if from_idx < self.active_tab && self.active_tab <= to_idx {
+                            self.active_tab -= 1;
+                        } else if from_idx > self.active_tab && self.active_tab >= to_idx {
+                            self.active_tab += 1;
+                        }
+                    }
+                }
+
                 if let Some((idx, action)) = tab_response.context_menu {
                     use crate::tab_bar::TabContextAction;
                     match action {
                         TabContextAction::CloseOthers => {
                             // Collect indices to remove (all except idx), remove in reverse order
-                            let indices: Vec<usize> = (0..self.documents.len())
-                                .filter(|&i| i != idx)
-                                .collect();
+                            let indices: Vec<usize> =
+                                (0..self.documents.len()).filter(|&i| i != idx).collect();
                             for &i in indices.iter().rev() {
                                 self.force_close_tab(i);
                             }
@@ -1872,9 +1991,7 @@ impl eframe::App for OpenEditApp {
                             let dir = path_buf.parent().unwrap_or(path_buf);
                             #[cfg(target_os = "linux")]
                             {
-                                let _ = std::process::Command::new("xdg-open")
-                                    .arg(dir)
-                                    .spawn();
+                                let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
                             }
                             #[cfg(target_os = "macos")]
                             {
@@ -1897,7 +2014,11 @@ impl eframe::App for OpenEditApp {
 
                 // Determine sidebar width for layout splitting
                 let sidebar_visible = self.sidebar_state.visible;
-                let sidebar_width = if sidebar_visible { self.sidebar_state.width } else { 0.0 };
+                let sidebar_width = if sidebar_visible {
+                    self.sidebar_state.width
+                } else {
+                    0.0
+                };
 
                 // Available area after tab bar (for sidebar + main content)
                 let full_available = ui.available_rect_before_wrap();
@@ -1932,10 +2053,7 @@ impl eframe::App for OpenEditApp {
                     // Refresh symbols if the panel is visible (live update)
                     if let Some(doc) = self.documents.get(self.active_tab) {
                         let source = doc.buffer.to_string();
-                        let lang_key = doc
-                            .language
-                            .as_deref()
-                            .and_then(SyntaxEngine::language_key);
+                        let lang_key = doc.language.as_deref().and_then(SyntaxEngine::language_key);
                         if let Some(key) = lang_key {
                             self.function_list_state.symbols =
                                 self.syntax_engine.extract_symbols(&source, key);
@@ -1966,7 +2084,10 @@ impl eframe::App for OpenEditApp {
                 // --- Main content area (right of sidebar, left of function list) ---
                 let main_rect = egui::Rect::from_min_size(
                     egui::Pos2::new(full_available.left() + sidebar_width, full_available.top()),
-                    egui::Vec2::new(full_available.width() - sidebar_width - fn_list_width, full_available.height()),
+                    egui::Vec2::new(
+                        full_available.width() - sidebar_width - fn_list_width,
+                        full_available.height(),
+                    ),
                 );
                 let mut main_ui = ui.new_child(
                     egui::UiBuilder::new()
@@ -1990,6 +2111,20 @@ impl eframe::App for OpenEditApp {
                     main_ui.separator();
                 }
 
+                // Breadcrumb bar
+                if self.breadcrumb_state.visible {
+                    if let Some(doc) = self.documents.get(self.active_tab) {
+                        let cursor = doc.cursors.primary().position;
+                        breadcrumb::render_breadcrumb(
+                            &mut main_ui,
+                            &self.breadcrumb_state,
+                            &self.theme,
+                            &self.function_list_state.symbols,
+                            cursor.line,
+                        );
+                    }
+                }
+
                 // Editor viewport (main area minus status bar and optional find-in-files panel)
                 let show_search = self.search_state.visible;
                 let show_find_in_files = self.find_in_files_state.visible;
@@ -2001,13 +2136,17 @@ impl eframe::App for OpenEditApp {
 
                 // Split between editor, find-in-files panel, and terminal
                 let terminal_height = if self.terminal_state.visible {
-                    (content_height * self.terminal_state.height_fraction).max(80.0).min(content_height - 100.0)
+                    (content_height * self.terminal_state.height_fraction)
+                        .max(80.0)
+                        .min(content_height - 100.0)
                 } else {
                     0.0
                 };
                 let remaining_height = content_height - terminal_height;
                 let find_panel_height = if show_find_in_files {
-                    (remaining_height * 0.30).max(150.0).min(remaining_height - 100.0)
+                    (remaining_height * 0.30)
+                        .max(150.0)
+                        .min(remaining_height - 100.0)
                 } else {
                     0.0
                 };
@@ -2021,44 +2160,83 @@ impl eframe::App for OpenEditApp {
                 // Editor (with optional split view or hex view)
                 let split_active = self.split.active;
                 let split_dir = self.split.direction;
-                let second_tab = self.split.second_tab.min(self.documents.len().saturating_sub(1));
+                let second_tab = self
+                    .split
+                    .second_tab
+                    .min(self.documents.len().saturating_sub(1));
 
                 // Build render context for editor (git + LSP + bracket colors)
                 let empty_diffs: Vec<(usize, crate::git::LineDiffStatus)> = Vec::new();
-                let empty_blame: std::collections::HashMap<usize, String> = std::collections::HashMap::new();
+                let empty_blame: std::collections::HashMap<usize, String> =
+                    std::collections::HashMap::new();
                 let empty_diags: Vec<crate::lsp::LspDiagnostic> = Vec::new();
-                let cur_path = self.documents.get(self.active_tab).and_then(|d| d.path.clone());
-                let git_line_diffs = cur_path.as_ref()
+                let cur_path = self
+                    .documents
+                    .get(self.active_tab)
+                    .and_then(|d| d.path.clone());
+                let git_line_diffs = cur_path
+                    .as_ref()
                     .map(|p| self.git_state.get_line_diffs(p).to_vec())
                     .unwrap_or_default();
-                let lsp_diagnostics = cur_path.as_ref()
+                let lsp_diagnostics = cur_path
+                    .as_ref()
                     .map(|p| self.lsp_manager.get_diagnostics(p).to_vec())
                     .unwrap_or_default();
                 let render_context = EditorRenderContext {
-                    git_line_diffs: if git_line_diffs.is_empty() { &empty_diffs } else { &git_line_diffs },
-                    git_blame_info: if self.git_state.show_blame { &self.git_state.blame_info } else { &empty_blame },
+                    git_line_diffs: if git_line_diffs.is_empty() {
+                        &empty_diffs
+                    } else {
+                        &git_line_diffs
+                    },
+                    git_blame_info: if self.git_state.show_blame {
+                        &self.git_state.blame_info
+                    } else {
+                        &empty_blame
+                    },
                     show_blame: self.git_state.show_blame,
-                    lsp_diagnostics: if lsp_diagnostics.is_empty() { &empty_diags } else { &lsp_diagnostics },
+                    lsp_diagnostics: if lsp_diagnostics.is_empty() {
+                        &empty_diags
+                    } else {
+                        &lsp_diagnostics
+                    },
                     bracket_colorization: self.bracket_colorization,
                 };
 
                 if self.diff_state.active {
                     // Diff/compare view replaces the normal editor
-                    let left_tab = self.diff_state.left_tab.min(self.documents.len().saturating_sub(1));
-                    let right_tab = self.diff_state.right_tab.min(self.documents.len().saturating_sub(1));
-                    let left_content = self.documents.get(left_tab)
+                    let left_tab = self
+                        .diff_state
+                        .left_tab
+                        .min(self.documents.len().saturating_sub(1));
+                    let right_tab = self
+                        .diff_state
+                        .right_tab
+                        .min(self.documents.len().saturating_sub(1));
+                    let left_content = self
+                        .documents
+                        .get(left_tab)
                         .map(|d| d.buffer.to_string())
                         .unwrap_or_default();
-                    let right_content = self.documents.get(right_tab)
+                    let right_content = self
+                        .documents
+                        .get(right_tab)
                         .map(|d| d.buffer.to_string())
                         .unwrap_or_default();
-                    let left_name = self.documents.get(left_tab)
+                    let left_name = self
+                        .documents
+                        .get(left_tab)
                         .map(|d| d.display_name())
                         .unwrap_or_else(|| "Left".to_string());
-                    let right_name = self.documents.get(right_tab)
+                    let right_name = self
+                        .documents
+                        .get(right_tab)
                         .map(|d| d.display_name())
                         .unwrap_or_else(|| "Right".to_string());
-                    let mut editor_ui = main_ui.new_child(egui::UiBuilder::new().max_rect(editor_rect).layout(egui::Layout::top_down(egui::Align::LEFT)));
+                    let mut editor_ui = main_ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(editor_rect)
+                            .layout(egui::Layout::top_down(egui::Align::LEFT)),
+                    );
                     diff_view::render_diff_view(
                         &mut editor_ui,
                         &mut self.diff_state,
@@ -2071,12 +2249,23 @@ impl eframe::App for OpenEditApp {
                     );
                 } else if self.hex_view_state.active {
                     // Hex editor view replaces the normal editor
-                    let mut editor_ui = main_ui.new_child(egui::UiBuilder::new().max_rect(editor_rect).layout(egui::Layout::top_down(egui::Align::LEFT)));
-                    hex_view::render_hex_view(&mut editor_ui, &mut self.hex_view_state, &self.theme, self.font_size);
+                    let mut editor_ui = main_ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(editor_rect)
+                            .layout(egui::Layout::top_down(egui::Align::LEFT)),
+                    );
+                    hex_view::render_hex_view(
+                        &mut editor_ui,
+                        &mut self.hex_view_state,
+                        &self.theme,
+                        self.font_size,
+                    );
                 } else if split_active && !self.documents.is_empty() {
                     let ratio = self.split_ratio.clamp(0.15, 0.85);
                     // Compute the two sub-rects with draggable divider
-                    let (pane1_rect, pane2_rect, divider_rect) = if split_dir == SplitDirection::Horizontal {
+                    let (pane1_rect, pane2_rect, divider_rect) = if split_dir
+                        == SplitDirection::Horizontal
+                    {
                         let sep = 6.0;
                         let first_w = (editor_rect.width() - sep) * ratio;
                         let r1 = egui::Rect::from_min_size(
@@ -2089,7 +2278,10 @@ impl eframe::App for OpenEditApp {
                         );
                         let r2 = egui::Rect::from_min_size(
                             egui::Pos2::new(editor_rect.left() + first_w + sep, editor_rect.top()),
-                            egui::Vec2::new(editor_rect.width() - first_w - sep, editor_rect.height()),
+                            egui::Vec2::new(
+                                editor_rect.width() - first_w - sep,
+                                editor_rect.height(),
+                            ),
                         );
                         (r1, r2, div)
                     } else {
@@ -2105,13 +2297,20 @@ impl eframe::App for OpenEditApp {
                         );
                         let r2 = egui::Rect::from_min_size(
                             egui::Pos2::new(editor_rect.left(), editor_rect.top() + first_h + sep),
-                            egui::Vec2::new(editor_rect.width(), editor_rect.height() - first_h - sep),
+                            egui::Vec2::new(
+                                editor_rect.width(),
+                                editor_rect.height() - first_h - sep,
+                            ),
                         );
                         (r1, r2, div)
                     };
 
                     // Handle divider drag
-                    let divider_response = main_ui.interact(divider_rect, main_ui.id().with("split_divider"), egui::Sense::drag());
+                    let divider_response = main_ui.interact(
+                        divider_rect,
+                        main_ui.id().with("split_divider"),
+                        egui::Sense::drag(),
+                    );
                     if divider_response.hovered() {
                         ctx.set_cursor_icon(if split_dir == SplitDirection::Horizontal {
                             egui::CursorIcon::ResizeHorizontal
@@ -2122,26 +2321,40 @@ impl eframe::App for OpenEditApp {
                     if divider_response.dragged() {
                         if let Some(pos) = divider_response.interact_pointer_pos() {
                             if split_dir == SplitDirection::Horizontal {
-                                self.split_ratio = ((pos.x - editor_rect.left()) / editor_rect.width()).clamp(0.15, 0.85);
+                                self.split_ratio = ((pos.x - editor_rect.left())
+                                    / editor_rect.width())
+                                .clamp(0.15, 0.85);
                             } else {
-                                self.split_ratio = ((pos.y - editor_rect.top()) / editor_rect.height()).clamp(0.15, 0.85);
+                                self.split_ratio = ((pos.y - editor_rect.top())
+                                    / editor_rect.height())
+                                .clamp(0.15, 0.85);
                             }
                         }
                     }
 
                     // Draw separator
                     let sep_color = self.theme.gutter_fg;
-                    main_ui.painter().rect_filled(divider_rect, 0.0, egui::Color32::from_rgb(60, 60, 60));
+                    main_ui.painter().rect_filled(
+                        divider_rect,
+                        0.0,
+                        egui::Color32::from_rgb(60, 60, 60),
+                    );
                     if split_dir == SplitDirection::Horizontal {
                         let x = divider_rect.center().x;
                         main_ui.painter().line_segment(
-                            [egui::Pos2::new(x, divider_rect.top()), egui::Pos2::new(x, divider_rect.bottom())],
+                            [
+                                egui::Pos2::new(x, divider_rect.top()),
+                                egui::Pos2::new(x, divider_rect.bottom()),
+                            ],
                             egui::Stroke::new(1.0, sep_color),
                         );
                     } else {
                         let y = divider_rect.center().y;
                         main_ui.painter().line_segment(
-                            [egui::Pos2::new(divider_rect.left(), y), egui::Pos2::new(divider_rect.right(), y)],
+                            [
+                                egui::Pos2::new(divider_rect.left(), y),
+                                egui::Pos2::new(divider_rect.right(), y),
+                            ],
                             egui::Stroke::new(1.0, sep_color),
                         );
                     }
@@ -2149,22 +2362,52 @@ impl eframe::App for OpenEditApp {
                     // Render pane 1 (active tab)
                     {
                         let mut pane1_ui = main_ui.new_child(
-                            egui::UiBuilder::new().max_rect(pane1_rect)
+                            egui::UiBuilder::new()
+                                .max_rect(pane1_rect)
                                 .layout(egui::Layout::top_down(egui::Align::LEFT)),
                         );
                         if let Some(doc) = self.documents.get_mut(self.active_tab) {
-                            editor_view::render_editor(&mut pane1_ui, doc, &self.theme, show_search, &mut self.editor_view_state, &mut self.syntax_engine, self.font_size, self.show_whitespace, self.show_minimap, &mut self.autocomplete, self.word_wrap, &mut self.macro_recorder, Some(&render_context));
+                            editor_view::render_editor(
+                                &mut pane1_ui,
+                                doc,
+                                &self.theme,
+                                show_search,
+                                &mut self.editor_view_state,
+                                &mut self.syntax_engine,
+                                self.font_size,
+                                self.show_whitespace,
+                                self.show_minimap,
+                                &mut self.autocomplete,
+                                self.word_wrap,
+                                &mut self.macro_recorder,
+                                Some(&render_context),
+                            );
                         }
                     }
 
                     // Render pane 2 (second tab)
                     {
                         let mut pane2_ui = main_ui.new_child(
-                            egui::UiBuilder::new().max_rect(pane2_rect)
+                            egui::UiBuilder::new()
+                                .max_rect(pane2_rect)
                                 .layout(egui::Layout::top_down(egui::Align::LEFT)),
                         );
                         if let Some(doc) = self.documents.get_mut(second_tab) {
-                            editor_view::render_editor(&mut pane2_ui, doc, &self.theme, false, &mut self.split.second_view_state, &mut self.syntax_engine, self.font_size, self.show_whitespace, self.show_minimap, &mut self.split.second_autocomplete, self.word_wrap, &mut self.macro_recorder, Some(&render_context));
+                            editor_view::render_editor(
+                                &mut pane2_ui,
+                                doc,
+                                &self.theme,
+                                false,
+                                &mut self.split.second_view_state,
+                                &mut self.syntax_engine,
+                                self.font_size,
+                                self.show_whitespace,
+                                self.show_minimap,
+                                &mut self.split.second_autocomplete,
+                                self.word_wrap,
+                                &mut self.macro_recorder,
+                                Some(&render_context),
+                            );
                         }
                     }
                 } else if self.show_markdown_preview {
@@ -2189,17 +2432,39 @@ impl eframe::App for OpenEditApp {
                     );
 
                     // Editor pane
-                    let mut editor_ui = main_ui.new_child(egui::UiBuilder::new().max_rect(left_rect).layout(egui::Layout::top_down(egui::Align::LEFT)));
+                    let mut editor_ui = main_ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(left_rect)
+                            .layout(egui::Layout::top_down(egui::Align::LEFT)),
+                    );
                     let source_for_preview;
                     if let Some(doc) = self.documents.get_mut(self.active_tab) {
                         source_for_preview = doc.buffer.to_string();
-                        editor_view::render_editor(&mut editor_ui, doc, &self.theme, show_search, &mut self.editor_view_state, &mut self.syntax_engine, self.font_size, self.show_whitespace, self.show_minimap, &mut self.autocomplete, self.word_wrap, &mut self.macro_recorder, Some(&render_context));
+                        editor_view::render_editor(
+                            &mut editor_ui,
+                            doc,
+                            &self.theme,
+                            show_search,
+                            &mut self.editor_view_state,
+                            &mut self.syntax_engine,
+                            self.font_size,
+                            self.show_whitespace,
+                            self.show_minimap,
+                            &mut self.autocomplete,
+                            self.word_wrap,
+                            &mut self.macro_recorder,
+                            Some(&render_context),
+                        );
                     } else {
                         source_for_preview = String::new();
                     }
 
                     // Markdown preview pane
-                    let mut preview_ui = main_ui.new_child(egui::UiBuilder::new().max_rect(right_rect).layout(egui::Layout::top_down(egui::Align::LEFT)));
+                    let mut preview_ui = main_ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(right_rect)
+                            .layout(egui::Layout::top_down(egui::Align::LEFT)),
+                    );
                     crate::markdown_preview::render_markdown_preview(
                         &mut preview_ui,
                         &source_for_preview,
@@ -2208,9 +2473,27 @@ impl eframe::App for OpenEditApp {
                     );
                 } else {
                     // Single editor pane
-                    let mut editor_ui = main_ui.new_child(egui::UiBuilder::new().max_rect(editor_rect).layout(egui::Layout::top_down(egui::Align::LEFT)));
+                    let mut editor_ui = main_ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(editor_rect)
+                            .layout(egui::Layout::top_down(egui::Align::LEFT)),
+                    );
                     if let Some(doc) = self.documents.get_mut(self.active_tab) {
-                        let was_modified = editor_view::render_editor(&mut editor_ui, doc, &self.theme, show_search, &mut self.editor_view_state, &mut self.syntax_engine, self.font_size, self.show_whitespace, self.show_minimap, &mut self.autocomplete, self.word_wrap, &mut self.macro_recorder, Some(&render_context));
+                        let was_modified = editor_view::render_editor(
+                            &mut editor_ui,
+                            doc,
+                            &self.theme,
+                            show_search,
+                            &mut self.editor_view_state,
+                            &mut self.syntax_engine,
+                            self.font_size,
+                            self.show_whitespace,
+                            self.show_minimap,
+                            &mut self.autocomplete,
+                            self.word_wrap,
+                            &mut self.macro_recorder,
+                            Some(&render_context),
+                        );
                         if was_modified {
                             // Trigger debounced LSP didChange and request completions
                             self.lsp_change_timer = Some(std::time::Instant::now());
@@ -2219,7 +2502,12 @@ impl eframe::App for OpenEditApp {
                                     .map(|u| u.to_string())
                                     .unwrap_or_default();
                                 let cursor = doc.cursors.primary().position;
-                                self.lsp_manager.request_completion(lang, &uri, cursor.line as u32, cursor.col as u32);
+                                self.lsp_manager.request_completion(
+                                    lang,
+                                    &uri,
+                                    cursor.line as u32,
+                                    cursor.col as u32,
+                                );
                             }
                         }
                     }
@@ -2229,7 +2517,8 @@ impl eframe::App for OpenEditApp {
                 if let Some(ref hover_text) = self.hover_text {
                     if let Some(pos) = self.hover_pos {
                         let mut hover_ui = main_ui.new_child(
-                            egui::UiBuilder::new().max_rect(editor_rect)
+                            egui::UiBuilder::new()
+                                .max_rect(editor_rect)
                                 .layout(egui::Layout::top_down(egui::Align::LEFT)),
                         );
                         crate::lsp::render_hover_tooltip(&mut hover_ui, hover_text, pos);
@@ -2251,7 +2540,8 @@ impl eframe::App for OpenEditApp {
                             editor_rect.top() + visible_line as f32 * line_h,
                         );
                         let mut lsp_ui = main_ui.new_child(
-                            egui::UiBuilder::new().max_rect(editor_rect)
+                            egui::UiBuilder::new()
+                                .max_rect(editor_rect)
                                 .layout(egui::Layout::top_down(egui::Align::LEFT)),
                         );
                         crate::lsp::render_lsp_autocomplete(
@@ -2271,7 +2561,11 @@ impl eframe::App for OpenEditApp {
                         egui::Pos2::new(available.left(), available.top() + editor_height),
                         egui::Vec2::new(available.width(), find_panel_height),
                     );
-                    let mut find_ui = main_ui.new_child(egui::UiBuilder::new().max_rect(find_rect).layout(egui::Layout::top_down(egui::Align::LEFT)));
+                    let mut find_ui = main_ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(find_rect)
+                            .layout(egui::Layout::top_down(egui::Align::LEFT)),
+                    );
                     find_ui.separator();
                     find_navigate = crate::find_in_files::render_find_in_files_panel(
                         &mut find_ui,
@@ -2291,19 +2585,27 @@ impl eframe::App for OpenEditApp {
                             .max_rect(terminal_rect)
                             .layout(egui::Layout::top_down(egui::Align::LEFT)),
                     );
-                    crate::terminal::render_terminal(&mut terminal_ui, &mut self.terminal_state, self.font_size);
+                    crate::terminal::render_terminal(
+                        &mut terminal_ui,
+                        &mut self.terminal_state,
+                        self.font_size,
+                    );
 
                     if self.terminal_focused {
-                        crate::terminal::handle_terminal_input(&mut terminal_ui, &mut self.terminal_state);
+                        crate::terminal::handle_terminal_input(
+                            &mut terminal_ui,
+                            &mut self.terminal_state,
+                        );
                     }
                 }
 
                 // Handle navigation from find-in-files result click
                 if let Some((path, line)) = find_navigate {
                     // Check if the file is already open
-                    let existing_tab = self.documents.iter().position(|d| {
-                        d.path.as_ref().map_or(false, |p| *p == path)
-                    });
+                    let existing_tab = self
+                        .documents
+                        .iter()
+                        .position(|d| d.path.as_ref().map_or(false, |p| *p == path));
                     if let Some(tab_idx) = existing_tab {
                         self.active_tab = tab_idx;
                     } else {
@@ -2324,7 +2626,14 @@ impl eframe::App for OpenEditApp {
                 } else {
                     None
                 };
-                let (_, sb_action) = status_bar::render_status_bar(&mut main_ui, doc_ref, &self.theme, self.macro_recorder.is_recording(), git_branch, vim_mode_str.as_deref());
+                let (_, sb_action) = status_bar::render_status_bar(
+                    &mut main_ui,
+                    doc_ref,
+                    &self.theme,
+                    self.macro_recorder.is_recording(),
+                    git_branch,
+                    vim_mode_str.as_deref(),
+                );
 
                 // Handle status bar actions
                 if let Some(action) = sb_action {
@@ -2350,9 +2659,10 @@ impl eframe::App for OpenEditApp {
                 // Handle sidebar file click (after layout to avoid borrow conflicts)
                 if let Some(path) = sidebar_file_clicked {
                     // Check if already open
-                    let existing = self.documents.iter().position(|d| {
-                        d.path.as_ref().map_or(false, |p| *p == path)
-                    });
+                    let existing = self
+                        .documents
+                        .iter()
+                        .position(|d| d.path.as_ref().map_or(false, |p| *p == path));
                     if let Some(tab_idx) = existing {
                         self.active_tab = tab_idx;
                     } else {
@@ -2375,7 +2685,9 @@ impl eframe::App for OpenEditApp {
 
         // Command palette
         if self.command_palette.open {
-            if let Some(cmd_id) = command_palette::render_command_palette(ctx, &mut self.command_palette) {
+            if let Some(cmd_id) =
+                command_palette::render_command_palette(ctx, &mut self.command_palette)
+            {
                 self.execute_command(cmd_id);
             }
         }
@@ -2391,7 +2703,8 @@ impl eframe::App for OpenEditApp {
 
         // Go to Symbol dialog
         if self.go_to_symbol_state.open {
-            if let Some(line) = go_to_symbol::render_go_to_symbol(ctx, &mut self.go_to_symbol_state) {
+            if let Some(line) = go_to_symbol::render_go_to_symbol(ctx, &mut self.go_to_symbol_state)
+            {
                 if let Some(doc) = self.documents.get_mut(self.active_tab) {
                     doc.go_to_line(line);
                 }
@@ -2428,7 +2741,9 @@ impl eframe::App for OpenEditApp {
 
         // Unsaved changes dialog
         if let Some(tab_idx) = self.unsaved_close_tab {
-            let doc_name = self.documents.get(tab_idx)
+            let doc_name = self
+                .documents
+                .get(tab_idx)
                 .map(|d| d.display_name())
                 .unwrap_or_else(|| "Untitled".to_string());
 
@@ -2465,7 +2780,9 @@ impl eframe::App for OpenEditApp {
 
         // External file change dialog
         if let Some(tab_idx) = self.external_change_tab {
-            let doc_name = self.documents.get(tab_idx)
+            let doc_name = self
+                .documents
+                .get(tab_idx)
                 .map(|d| d.display_name())
                 .unwrap_or_else(|| "Untitled".to_string());
 
@@ -2489,7 +2806,9 @@ impl eframe::App for OpenEditApp {
                                             *doc = Document::from_str(&text);
                                             doc.path = Some(path.clone());
                                             doc.encoding = encoding;
-                                            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                                            if let Some(ext) =
+                                                path.extension().and_then(|e| e.to_str())
+                                            {
                                                 doc.language = Some(language_from_extension(ext));
                                             }
                                         }
@@ -2521,16 +2840,22 @@ impl eframe::App for OpenEditApp {
                     // Line range
                     ui.horizontal(|ui| {
                         ui.label("Start line:");
-                        ui.add(egui::TextEdit::singleline(&mut self.column_editor_start_line)
-                            .desired_width(60.0));
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.column_editor_start_line)
+                                .desired_width(60.0),
+                        );
                         ui.label("End line:");
-                        ui.add(egui::TextEdit::singleline(&mut self.column_editor_end_line)
-                            .desired_width(60.0));
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.column_editor_end_line)
+                                .desired_width(60.0),
+                        );
                     });
                     ui.horizontal(|ui| {
                         ui.label("Column:");
-                        ui.add(egui::TextEdit::singleline(&mut self.column_editor_col)
-                            .desired_width(60.0));
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.column_editor_col)
+                                .desired_width(60.0),
+                        );
                     });
 
                     ui.add_space(4.0);
@@ -2539,8 +2864,16 @@ impl eframe::App for OpenEditApp {
 
                     // Mode selector
                     ui.horizontal(|ui| {
-                        ui.selectable_value(&mut self.column_editor_mode, ColumnEditorMode::Text, "Insert Text");
-                        ui.selectable_value(&mut self.column_editor_mode, ColumnEditorMode::Number, "Insert Numbers");
+                        ui.selectable_value(
+                            &mut self.column_editor_mode,
+                            ColumnEditorMode::Text,
+                            "Insert Text",
+                        );
+                        ui.selectable_value(
+                            &mut self.column_editor_mode,
+                            ColumnEditorMode::Number,
+                            "Insert Numbers",
+                        );
                     });
 
                     ui.add_space(4.0);
@@ -2549,23 +2882,31 @@ impl eframe::App for OpenEditApp {
                         ColumnEditorMode::Text => {
                             ui.horizontal(|ui| {
                                 ui.label("Text:");
-                                ui.add(egui::TextEdit::singleline(&mut self.column_editor_text)
-                                    .desired_width(200.0));
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut self.column_editor_text)
+                                        .desired_width(200.0),
+                                );
                             });
                         }
                         ColumnEditorMode::Number => {
                             ui.horizontal(|ui| {
                                 ui.label("Initial:");
-                                ui.add(egui::TextEdit::singleline(&mut self.column_editor_initial)
-                                    .desired_width(60.0));
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut self.column_editor_initial)
+                                        .desired_width(60.0),
+                                );
                                 ui.label("Step:");
-                                ui.add(egui::TextEdit::singleline(&mut self.column_editor_step)
-                                    .desired_width(60.0));
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut self.column_editor_step)
+                                        .desired_width(60.0),
+                                );
                             });
                             ui.horizontal(|ui| {
                                 ui.label("Pad width:");
-                                ui.add(egui::TextEdit::singleline(&mut self.column_editor_pad_width)
-                                    .desired_width(60.0));
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut self.column_editor_pad_width)
+                                        .desired_width(60.0),
+                                );
                                 ui.label("(0 = no padding)");
                             });
                         }
@@ -2576,23 +2917,54 @@ impl eframe::App for OpenEditApp {
                     ui.horizontal(|ui| {
                         if ui.button("Apply").clicked() {
                             // Parse inputs
-                            let col = self.column_editor_col.trim().parse::<usize>()
-                                .unwrap_or(1).saturating_sub(1); // 1-based to 0-based
-                            let start_line = self.column_editor_start_line.trim().parse::<usize>()
-                                .unwrap_or(1).saturating_sub(1);
-                            let end_line = self.column_editor_end_line.trim().parse::<usize>()
-                                .unwrap_or(1).saturating_sub(1);
+                            let col = self
+                                .column_editor_col
+                                .trim()
+                                .parse::<usize>()
+                                .unwrap_or(1)
+                                .saturating_sub(1); // 1-based to 0-based
+                            let start_line = self
+                                .column_editor_start_line
+                                .trim()
+                                .parse::<usize>()
+                                .unwrap_or(1)
+                                .saturating_sub(1);
+                            let end_line = self
+                                .column_editor_end_line
+                                .trim()
+                                .parse::<usize>()
+                                .unwrap_or(1)
+                                .saturating_sub(1);
 
                             if let Some(doc) = self.documents.get_mut(self.active_tab) {
                                 match self.column_editor_mode {
                                     ColumnEditorMode::Text => {
-                                        doc.column_insert_text(start_line, end_line, col, &self.column_editor_text);
+                                        doc.column_insert_text(
+                                            start_line,
+                                            end_line,
+                                            col,
+                                            &self.column_editor_text,
+                                        );
                                     }
                                     ColumnEditorMode::Number => {
-                                        let initial = self.column_editor_initial.trim().parse::<i64>().unwrap_or(1);
-                                        let step = self.column_editor_step.trim().parse::<i64>().unwrap_or(1);
-                                        let pad = self.column_editor_pad_width.trim().parse::<usize>().unwrap_or(0);
-                                        doc.column_insert_numbers(start_line, end_line, col, initial, step, pad);
+                                        let initial = self
+                                            .column_editor_initial
+                                            .trim()
+                                            .parse::<i64>()
+                                            .unwrap_or(1);
+                                        let step = self
+                                            .column_editor_step
+                                            .trim()
+                                            .parse::<i64>()
+                                            .unwrap_or(1);
+                                        let pad = self
+                                            .column_editor_pad_width
+                                            .trim()
+                                            .parse::<usize>()
+                                            .unwrap_or(0);
+                                        doc.column_insert_numbers(
+                                            start_line, end_line, col, initial, step, pad,
+                                        );
                                     }
                                 }
                             }
@@ -2640,38 +3012,50 @@ impl eframe::App for OpenEditApp {
                 .show(ctx, |ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         let shortcuts = [
-                            ("File", &[
-                                ("Ctrl+N", "New File"),
-                                ("Ctrl+O", "Open File"),
-                                ("Ctrl+S", "Save"),
-                                ("Ctrl+Shift+S", "Save As"),
-                                ("Ctrl+W", "Close Tab"),
-                            ] as &[(&str, &str)]),
-                            ("Edit", &[
-                                ("Ctrl+Z", "Undo"),
-                                ("Ctrl+Y", "Redo"),
-                                ("Ctrl+X", "Cut"),
-                                ("Ctrl+C", "Copy"),
-                                ("Ctrl+V", "Paste"),
-                                ("Ctrl+/", "Toggle Comment"),
-                                ("Ctrl+D", "Add Next Occurrence"),
-                                ("Ctrl+Shift+L", "Select All Occurrences"),
-                            ]),
-                            ("Navigation", &[
-                                ("Ctrl+G", "Go to Line"),
-                                ("Ctrl+P", "Go to File"),
-                                ("Ctrl+F", "Find"),
-                                ("Ctrl+H", "Replace"),
-                                ("Ctrl+Shift+F", "Find in Files"),
-                                ("Ctrl+Shift+P", "Command Palette"),
-                            ]),
-                            ("View", &[
-                                ("Ctrl+B", "Toggle Sidebar"),
-                                ("Ctrl+`", "Toggle Terminal"),
-                                ("Ctrl+=", "Zoom In"),
-                                ("Ctrl+-", "Zoom Out"),
-                                ("F11", "Zen Mode"),
-                            ]),
+                            (
+                                "File",
+                                &[
+                                    ("Ctrl+N", "New File"),
+                                    ("Ctrl+O", "Open File"),
+                                    ("Ctrl+S", "Save"),
+                                    ("Ctrl+Shift+S", "Save As"),
+                                    ("Ctrl+W", "Close Tab"),
+                                ] as &[(&str, &str)],
+                            ),
+                            (
+                                "Edit",
+                                &[
+                                    ("Ctrl+Z", "Undo"),
+                                    ("Ctrl+Y", "Redo"),
+                                    ("Ctrl+X", "Cut"),
+                                    ("Ctrl+C", "Copy"),
+                                    ("Ctrl+V", "Paste"),
+                                    ("Ctrl+/", "Toggle Comment"),
+                                    ("Ctrl+D", "Add Next Occurrence"),
+                                    ("Ctrl+Shift+L", "Select All Occurrences"),
+                                ],
+                            ),
+                            (
+                                "Navigation",
+                                &[
+                                    ("Ctrl+G", "Go to Line"),
+                                    ("Ctrl+P", "Go to File"),
+                                    ("Ctrl+F", "Find"),
+                                    ("Ctrl+H", "Replace"),
+                                    ("Ctrl+Shift+F", "Find in Files"),
+                                    ("Ctrl+Shift+P", "Command Palette"),
+                                ],
+                            ),
+                            (
+                                "View",
+                                &[
+                                    ("Ctrl+B", "Toggle Sidebar"),
+                                    ("Ctrl+`", "Toggle Terminal"),
+                                    ("Ctrl+=", "Zoom In"),
+                                    ("Ctrl+-", "Zoom Out"),
+                                    ("F11", "Zen Mode"),
+                                ],
+                            ),
                         ];
                         for (section, items) in &shortcuts {
                             ui.heading(*section);
@@ -2720,7 +3104,9 @@ fn apply_text_tool(doc: &mut Document, tool_id: &str) {
     let result = match tool_id {
         "tools.sort_asc" => Some(openedit_tools::sort::sort_lines_asc(&input)),
         "tools.sort_desc" => Some(openedit_tools::sort::sort_lines_desc(&input)),
-        "tools.sort_case_insensitive" => Some(openedit_tools::sort::sort_lines_case_insensitive(&input)),
+        "tools.sort_case_insensitive" => {
+            Some(openedit_tools::sort::sort_lines_case_insensitive(&input))
+        }
         "tools.sort_numeric" => Some(openedit_tools::sort::sort_lines_numeric(&input)),
         "tools.uppercase" => Some(openedit_tools::case::to_uppercase(&input)),
         "tools.lowercase" => Some(openedit_tools::case::to_lowercase(&input)),

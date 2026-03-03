@@ -11,12 +11,28 @@ pub enum TabContextAction {
     RevealInFileManager(String),
 }
 
+/// Drag state for tab reordering
+pub struct TabDragState {
+    pub dragging_tab: Option<usize>,
+    pub target_index: Option<usize>,
+}
+
+impl Default for TabDragState {
+    fn default() -> Self {
+        Self {
+            dragging_tab: None,
+            target_index: None,
+        }
+    }
+}
+
 /// Renders the tab bar and returns the index of the tab to activate (if changed),
 /// and the index of a tab to close (if any).
 pub struct TabBarResponse {
     pub activate: Option<usize>,
     pub close: Option<usize>,
     pub context_menu: Option<(usize, TabContextAction)>,
+    pub reorder: Option<(usize, usize)>, // (from, to)
 }
 
 pub fn render_tab_bar(
@@ -24,11 +40,13 @@ pub fn render_tab_bar(
     tabs: &[(String, bool, Option<String>)], // (display_name, is_modified, file_path)
     active_tab: usize,
     theme: &EditorTheme,
+    drag_state: &mut TabDragState,
 ) -> TabBarResponse {
     let mut response = TabBarResponse {
         activate: None,
         close: None,
         context_menu: None,
+        reorder: None,
     };
 
     ui.horizontal(|ui| {
@@ -54,15 +72,14 @@ pub fn render_tab_bar(
 
             let resp = frame.show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    let text = egui::RichText::new(&label)
-                        .color(theme.tab_text)
-                        .size(13.0);
+                    let text = egui::RichText::new(&label).color(theme.tab_text).size(13.0);
                     let tab_resp = ui.label(text);
 
                     // Close button
-                    let close_text = egui::RichText::new(" \u{00D7}") // ×
-                        .color(theme.tab_text.linear_multiply(0.6))
-                        .size(13.0);
+                    let close_text =
+                        egui::RichText::new(" \u{00D7}") // ×
+                            .color(theme.tab_text.linear_multiply(0.6))
+                            .size(13.0);
                     if ui.label(close_text).on_hover_text("Close").clicked() {
                         response.close = Some(i);
                     }
@@ -72,8 +89,23 @@ pub fn render_tab_bar(
                 .inner
             });
 
-            // Click tab to activate
-            if resp.response.clicked() {
+            // Handle drag start
+            if resp.response.drag_started() {
+                drag_state.dragging_tab = Some(i);
+            }
+
+            // Handle drag and drop for reordering
+            if let Some(dragging_idx) = drag_state.dragging_tab {
+                let cursor_pos = ui.input(|i| i.pointer.interact_pos());
+                if dragging_idx != i
+                    && cursor_pos.map_or(false, |pos| resp.response.rect.contains(pos))
+                {
+                    drag_state.target_index = Some(i);
+                }
+            }
+
+            // Click tab to activate (only if not dragging)
+            if resp.response.clicked() && drag_state.dragging_tab.is_none() {
                 response.activate = Some(i);
             }
 
@@ -96,22 +128,32 @@ pub fn render_tab_bar(
                     ui.close_menu();
                 }
                 let can_close_right = i + 1 < tab_count;
-                if ui.add_enabled(can_close_right, egui::Button::new("Close to the Right")).clicked() {
+                if ui
+                    .add_enabled(can_close_right, egui::Button::new("Close to the Right"))
+                    .clicked()
+                {
                     response.context_menu = Some((i, TabContextAction::CloseToRight));
                     ui.close_menu();
                 }
 
                 ui.separator();
 
-                if ui.add_enabled(has_path, egui::Button::new("Copy Path")).clicked() {
+                if ui
+                    .add_enabled(has_path, egui::Button::new("Copy Path"))
+                    .clicked()
+                {
                     if let Some(ref path) = file_path_clone {
                         response.context_menu = Some((i, TabContextAction::CopyPath(path.clone())));
                     }
                     ui.close_menu();
                 }
-                if ui.add_enabled(has_path, egui::Button::new("Reveal in File Manager")).clicked() {
+                if ui
+                    .add_enabled(has_path, egui::Button::new("Reveal in File Manager"))
+                    .clicked()
+                {
                     if let Some(ref path) = file_path_clone {
-                        response.context_menu = Some((i, TabContextAction::RevealInFileManager(path.clone())));
+                        response.context_menu =
+                            Some((i, TabContextAction::RevealInFileManager(path.clone())));
                     }
                     ui.close_menu();
                 }
@@ -124,13 +166,20 @@ pub fn render_tab_bar(
         }
 
         // "+" button for new tab
-        let plus = egui::RichText::new(" + ")
-            .color(theme.tab_text)
-            .size(13.0);
+        let plus = egui::RichText::new(" + ").color(theme.tab_text).size(13.0);
         if ui.button(plus).on_hover_text("New Tab").clicked() {
             response.activate = Some(usize::MAX); // sentinel for "new tab"
         }
     });
+
+    // Handle drag end and reorder
+    if let (Some(from_idx), Some(to_idx)) = (drag_state.dragging_tab, drag_state.target_index) {
+        if from_idx != to_idx {
+            response.reorder = Some((from_idx, to_idx));
+        }
+        drag_state.dragging_tab = None;
+        drag_state.target_index = None;
+    }
 
     response
 }
