@@ -2805,6 +2805,7 @@ dependencies = [
  "openedit-tools",
  "portable-pty",
  "pulldown-cmark",
+ "quick-xml 0.38.4",
  "regex",
  "rfd",
  "serde",

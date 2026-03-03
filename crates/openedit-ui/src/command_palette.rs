@@ -582,6 +582,16 @@ pub fn all_commands() -> Vec<Command> {
             label: "Theme: Reload User Themes".into(),
             shortcut: "",
         },
+        Command {
+            id: "theme.import_vscode".into(),
+            label: "Theme: Import VS Code Theme".into(),
+            shortcut: "",
+        },
+        Command {
+            id: "theme.import_notepadpp".into(),
+            label: "Theme: Import Notepad++ Theme".into(),
+            shortcut: "",
+        },
         // Plugins
         Command {
             id: "plugins.manage".into(),

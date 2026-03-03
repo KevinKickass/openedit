@@ -1289,6 +1289,58 @@ impl OpenEditApp {
                 let current_name = self.theme.name.clone();
                 self.theme = self.theme_registry.get(&current_name);
             }
+            "theme.import_vscode" => {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("VS Code Theme", &["json"])
+                    .set_title("Import VS Code Theme")
+                    .pick_file()
+                {
+                    match crate::theme_import::import_vscode_theme(&path) {
+                        Ok(saved_path) => {
+                            log::info!("Imported VS Code theme to {}", saved_path.display());
+                            self.theme_registry.reload();
+                            self.update_dynamic_theme_commands();
+                            // Activate the newly imported theme.
+                            if let Ok(content) = std::fs::read_to_string(&saved_path) {
+                                if let Ok(tf) = toml::from_str::<crate::theme::ThemeFile>(&content)
+                                {
+                                    self.theme = self.theme_registry.get(&tf.name);
+                                    self.save_config_state();
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Failed to import VS Code theme: {}", e);
+                        }
+                    }
+                }
+            }
+            "theme.import_notepadpp" => {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Notepad++ Theme", &["xml"])
+                    .set_title("Import Notepad++ Theme")
+                    .pick_file()
+                {
+                    match crate::theme_import::import_notepadpp_theme(&path) {
+                        Ok(saved_path) => {
+                            log::info!("Imported Notepad++ theme to {}", saved_path.display());
+                            self.theme_registry.reload();
+                            self.update_dynamic_theme_commands();
+                            // Activate the newly imported theme.
+                            if let Ok(content) = std::fs::read_to_string(&saved_path) {
+                                if let Ok(tf) = toml::from_str::<crate::theme::ThemeFile>(&content)
+                                {
+                                    self.theme = self.theme_registry.get(&tf.name);
+                                    self.save_config_state();
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Failed to import Notepad++ theme: {}", e);
+                        }
+                    }
+                }
+            }
             cmd if cmd.starts_with("view.theme.") => {
                 let theme_key = &cmd["view.theme.".len()..];
                 self.theme = self.theme_registry.get(theme_key);
@@ -2655,6 +2707,15 @@ impl eframe::App for OpenEditApp {
                             }
                             if ui.button("Reload Themes").clicked() {
                                 self.execute_command("theme.reload");
+                                ui.close_menu();
+                            }
+                            ui.separator();
+                            if ui.button("Import VS Code Theme...").clicked() {
+                                self.execute_command("theme.import_vscode");
+                                ui.close_menu();
+                            }
+                            if ui.button("Import Notepad++ Theme...").clicked() {
+                                self.execute_command("theme.import_notepadpp");
                                 ui.close_menu();
                             }
                         });
