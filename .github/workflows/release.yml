@@ -21,9 +21,6 @@ jobs:
           - os: macos-latest
             artifact: openedit-macos-arm64
             binary: openedit
-          - os: macos-13
-            artifact: openedit-macos-x64
-            binary: openedit
           - os: windows-latest
             artifact: openedit-windows-x64
             binary: openedit.exe
