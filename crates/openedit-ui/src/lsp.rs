@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 use url::Url;
 
 /// Messages from the LSP server to the UI thread.
@@ -31,6 +31,16 @@ pub enum LspEvent {
     Definition {
         request_id: i64,
         location: Option<LspLocation>,
+    },
+    /// Find references result.
+    References {
+        request_id: i64,
+        locations: Vec<LspLocation>,
+    },
+    /// Rename result (workspace edit).
+    Rename {
+        request_id: i64,
+        edit: Option<LspWorkspaceEdit>,
     },
     /// Server initialized successfully.
     Initialized,
@@ -71,6 +81,59 @@ pub struct LspLocation {
     pub col: usize,
 }
 
+/// A text edit within a single file (for rename results).
+#[derive(Debug, Clone)]
+pub struct LspTextEdit {
+    pub start_line: usize,
+    pub start_col: usize,
+    pub end_line: usize,
+    pub end_col: usize,
+    pub new_text: String,
+}
+
+/// A workspace edit returned from rename — edits grouped by file URI.
+#[derive(Debug, Clone)]
+pub struct LspWorkspaceEdit {
+    /// Map of file URI to list of text edits for that file.
+    pub changes: HashMap<String, Vec<LspTextEdit>>,
+}
+
+/// State for the references results panel.
+pub struct ReferencesState {
+    pub visible: bool,
+    pub locations: Vec<LspLocation>,
+    /// Scroll offset for the results list.
+    pub scroll: f32,
+}
+
+impl Default for ReferencesState {
+    fn default() -> Self {
+        Self {
+            visible: false,
+            locations: Vec::new(),
+            scroll: 0.0,
+        }
+    }
+}
+
+/// State for the inline rename dialog.
+pub struct RenameDialogState {
+    pub visible: bool,
+    pub input: String,
+    /// Whether the text input should request focus on the next frame.
+    pub needs_focus: bool,
+}
+
+impl Default for RenameDialogState {
+    fn default() -> Self {
+        Self {
+            visible: false,
+            input: String::new(),
+            needs_focus: false,
+        }
+    }
+}
+
 /// State for a single LSP server connection.
 struct LspServer {
     process: Child,
@@ -96,10 +159,19 @@ pub struct LspManager {
     pub pending_hover: Option<String>,
     /// Pending definition result.
     pub pending_definition: Option<LspLocation>,
+    /// Pending references results.
+    pub pending_references: Option<Vec<LspLocation>>,
+    /// Pending rename workspace edit.
+    pub pending_rename: Option<LspWorkspaceEdit>,
     /// Last completion request ID (to discard stale responses).
     last_completion_id: i64,
     last_hover_id: i64,
     last_definition_id: i64,
+    last_references_id: i64,
+    last_rename_id: i64,
+    /// Tracks which request IDs are references vs definition requests.
+    /// Shared with reader threads so they can disambiguate Location[] responses.
+    pending_request_types: Arc<Mutex<HashMap<i64, &'static str>>>,
 }
 
 impl LspManager {
@@ -114,9 +186,14 @@ impl LspManager {
             pending_completions: None,
             pending_hover: None,
             pending_definition: None,
+            pending_references: None,
+            pending_rename: None,
             last_completion_id: 0,
             last_hover_id: 0,
             last_definition_id: 0,
+            last_references_id: 0,
+            last_rename_id: 0,
+            pending_request_types: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -146,6 +223,19 @@ impl LspManager {
                 } => {
                     if request_id == self.last_definition_id {
                         self.pending_definition = location;
+                    }
+                }
+                LspEvent::References {
+                    request_id,
+                    locations,
+                } => {
+                    if request_id == self.last_references_id {
+                        self.pending_references = Some(locations);
+                    }
+                }
+                LspEvent::Rename { request_id, edit } => {
+                    if request_id == self.last_rename_id {
+                        self.pending_rename = edit;
                     }
                 }
                 LspEvent::Initialized => {
@@ -228,8 +318,9 @@ impl LspManager {
             .to_string();
 
         let tx = self.event_tx.clone();
+        let req_types = self.pending_request_types.clone();
         let reader_thread = std::thread::spawn(move || {
-            read_lsp_messages(stdout, tx);
+            read_lsp_messages(stdout, tx, req_types);
         });
 
         let mut server = LspServer {
@@ -264,6 +355,12 @@ impl LspManager {
                         ..Default::default()
                     }),
                     definition: Some(GotoCapability {
+                        ..Default::default()
+                    }),
+                    references: Some(DynamicRegistrationClientCapabilities {
+                        ..Default::default()
+                    }),
+                    rename: Some(RenameClientCapabilities {
                         ..Default::default()
                     }),
                     ..Default::default()
@@ -387,6 +484,9 @@ impl LspManager {
             let id = server.next_id;
             server.next_id += 1;
             self.last_definition_id = id;
+            if let Ok(mut map) = self.pending_request_types.lock() {
+                map.insert(id, "definition");
+            }
 
             let msg = serde_json::json!({
                 "jsonrpc": "2.0",
@@ -395,6 +495,61 @@ impl LspManager {
                 "params": {
                     "textDocument": { "uri": uri },
                     "position": { "line": line, "character": col },
+                }
+            });
+            send_message(&mut server.stdin, &msg);
+        }
+    }
+
+    /// Request find references at a position (Shift+F12).
+    pub fn request_references(&mut self, language: &str, uri: &str, line: u32, col: u32) {
+        if let Some(server) = self.servers.get_mut(language) {
+            let id = server.next_id;
+            server.next_id += 1;
+            self.last_references_id = id;
+            if let Ok(mut map) = self.pending_request_types.lock() {
+                map.insert(id, "references");
+            }
+
+            let msg = serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "method": "textDocument/references",
+                "params": {
+                    "textDocument": { "uri": uri },
+                    "position": { "line": line, "character": col },
+                    "context": { "includeDeclaration": true },
+                }
+            });
+            send_message(&mut server.stdin, &msg);
+        }
+    }
+
+    /// Request rename symbol at a position (F2).
+    pub fn request_rename(
+        &mut self,
+        language: &str,
+        uri: &str,
+        line: u32,
+        col: u32,
+        new_name: &str,
+    ) {
+        if let Some(server) = self.servers.get_mut(language) {
+            let id = server.next_id;
+            server.next_id += 1;
+            self.last_rename_id = id;
+            if let Ok(mut map) = self.pending_request_types.lock() {
+                map.insert(id, "rename");
+            }
+
+            let msg = serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "method": "textDocument/rename",
+                "params": {
+                    "textDocument": { "uri": uri },
+                    "position": { "line": line, "character": col },
+                    "newName": new_name,
                 }
             });
             send_message(&mut server.stdin, &msg);
@@ -425,6 +580,16 @@ impl LspManager {
     /// Take pending definition (clears it).
     pub fn take_definition(&mut self) -> Option<LspLocation> {
         self.pending_definition.take()
+    }
+
+    /// Take pending references (clears them).
+    pub fn take_references(&mut self) -> Option<Vec<LspLocation>> {
+        self.pending_references.take()
+    }
+
+    /// Take pending rename result (clears it).
+    pub fn take_rename(&mut self) -> Option<LspWorkspaceEdit> {
+        self.pending_rename.take()
     }
 
     /// Shut down all servers.
@@ -467,7 +632,11 @@ fn send_message(stdin: &mut std::process::ChildStdin, msg: &serde_json::Value) {
 }
 
 /// Read LSP messages from stdout and send events.
-fn read_lsp_messages(stdout: std::process::ChildStdout, tx: mpsc::Sender<LspEvent>) {
+fn read_lsp_messages(
+    stdout: std::process::ChildStdout,
+    tx: mpsc::Sender<LspEvent>,
+    request_types: Arc<Mutex<HashMap<i64, &'static str>>>,
+) {
     let mut reader = BufReader::new(stdout);
     let mut header_buf = String::new();
 
@@ -530,10 +699,35 @@ fn read_lsp_messages(stdout: std::process::ChildStdout, tx: mpsc::Sender<LspEven
                 _ => {}
             }
         } else if let Some(id) = msg.get("id").and_then(|i| i.as_i64()) {
+            // Look up what kind of request this response is for
+            let req_type = request_types
+                .lock()
+                .ok()
+                .and_then(|mut map| map.remove(&id));
+
             // Response to a request
             if let Some(result) = msg.get("result") {
-                // Try to determine what kind of response this is
-                if let Some(items) = parse_completion_response(result) {
+                // Check for rename response (WorkspaceEdit) first — unique shape
+                if req_type == Some("rename") {
+                    if let Some(edit) = parse_rename_response(result) {
+                        let _ = tx.send(LspEvent::Rename {
+                            request_id: id,
+                            edit: Some(edit),
+                        });
+                    } else {
+                        let _ = tx.send(LspEvent::Rename {
+                            request_id: id,
+                            edit: None,
+                        });
+                    }
+                } else if req_type == Some("references") {
+                    // References returns Location[] or null
+                    let locations = parse_locations_response(result);
+                    let _ = tx.send(LspEvent::References {
+                        request_id: id,
+                        locations,
+                    });
+                } else if let Some(items) = parse_completion_response(result) {
                     let _ = tx.send(LspEvent::Completions {
                         request_id: id,
                         items,
@@ -689,6 +883,121 @@ fn parse_definition_response(result: &serde_json::Value) -> Option<LspLocation> 
         uri,
         line: start.get("line")?.as_u64()? as usize,
         col: start.get("character")?.as_u64()? as usize,
+    })
+}
+
+/// Parse a Location[] response into a list of LspLocation (used for references).
+fn parse_locations_response(result: &serde_json::Value) -> Vec<LspLocation> {
+    if result.is_null() {
+        return Vec::new();
+    }
+
+    let arr = if result.is_array() {
+        result.as_array()
+    } else {
+        None
+    };
+
+    let Some(items) = arr else {
+        // Single location
+        if let Some(loc) = parse_single_location(result) {
+            return vec![loc];
+        }
+        return Vec::new();
+    };
+
+    items.iter().filter_map(|v| parse_single_location(v)).collect()
+}
+
+/// Parse a single Location or LocationLink JSON value.
+fn parse_single_location(value: &serde_json::Value) -> Option<LspLocation> {
+    if let Some(uri) = value.get("uri").and_then(|u| u.as_str()) {
+        let range = value.get("range")?;
+        let start = range.get("start")?;
+        return Some(LspLocation {
+            uri: uri.to_string(),
+            line: start.get("line")?.as_u64()? as usize,
+            col: start.get("character")?.as_u64()? as usize,
+        });
+    }
+    if let Some(uri) = value.get("targetUri").and_then(|u| u.as_str()) {
+        let range = value.get("targetRange")?;
+        let start = range.get("start")?;
+        return Some(LspLocation {
+            uri: uri.to_string(),
+            line: start.get("line")?.as_u64()? as usize,
+            col: start.get("character")?.as_u64()? as usize,
+        });
+    }
+    None
+}
+
+/// Parse a WorkspaceEdit from a rename response.
+fn parse_rename_response(result: &serde_json::Value) -> Option<LspWorkspaceEdit> {
+    if result.is_null() {
+        return None;
+    }
+
+    let mut changes: HashMap<String, Vec<LspTextEdit>> = HashMap::new();
+
+    // Standard WorkspaceEdit with "changes" field: { uri: TextEdit[] }
+    if let Some(changes_obj) = result.get("changes").and_then(|c| c.as_object()) {
+        for (uri, edits_val) in changes_obj {
+            if let Some(edits_arr) = edits_val.as_array() {
+                let edits: Vec<LspTextEdit> = edits_arr
+                    .iter()
+                    .filter_map(|e| parse_text_edit(e))
+                    .collect();
+                if !edits.is_empty() {
+                    changes.insert(uri.clone(), edits);
+                }
+            }
+        }
+    }
+
+    // WorkspaceEdit with "documentChanges" field (TextDocumentEdit[])
+    if let Some(doc_changes) = result.get("documentChanges").and_then(|d| d.as_array()) {
+        for doc_change in doc_changes {
+            let uri = doc_change
+                .get("textDocument")
+                .and_then(|td| td.get("uri"))
+                .and_then(|u| u.as_str());
+            let edits = doc_change.get("edits").and_then(|e| e.as_array());
+            if let (Some(uri), Some(edits_arr)) = (uri, edits) {
+                let edits: Vec<LspTextEdit> = edits_arr
+                    .iter()
+                    .filter_map(|e| parse_text_edit(e))
+                    .collect();
+                if !edits.is_empty() {
+                    changes
+                        .entry(uri.to_string())
+                        .or_default()
+                        .extend(edits);
+                }
+            }
+        }
+    }
+
+    if changes.is_empty() {
+        return None;
+    }
+
+    Some(LspWorkspaceEdit { changes })
+}
+
+/// Parse a single LSP TextEdit JSON object.
+fn parse_text_edit(value: &serde_json::Value) -> Option<LspTextEdit> {
+    let range = value.get("range")?;
+    let start = range.get("start")?;
+    let end = range.get("end")?;
+    let new_text = value.get("newText")?.as_str()?.to_string();
+
+    Some(LspTextEdit {
+        start_line: start.get("line")?.as_u64()? as usize,
+        start_col: start.get("character")?.as_u64()? as usize,
+        end_line: end.get("line")?.as_u64()? as usize,
+        end_col: end.get("character")?.as_u64()? as usize,
+        new_text,
     })
 }
 
@@ -938,4 +1247,153 @@ pub fn render_hover_tooltip(ui: &mut egui::Ui, text: &str, pos: egui::Pos2) {
         font_id,
         egui::Color32::from_rgb(212, 212, 212),
     );
+}
+
+/// Render the references results panel (similar to Find in Files).
+///
+/// Returns `Some((file_path, line))` when the user clicks on a reference.
+pub fn render_references_panel(
+    ui: &mut egui::Ui,
+    state: &mut ReferencesState,
+) -> Option<(std::path::PathBuf, usize)> {
+    let mut navigate_to: Option<(std::path::PathBuf, usize)> = None;
+
+    egui::Frame::none()
+        .fill(egui::Color32::from_rgb(37, 37, 38))
+        .inner_margin(egui::Margin::same(8.0))
+        .show(ui, |ui| {
+            // Header row
+            ui.horizontal(|ui| {
+                ui.strong(format!("References ({})", state.locations.len()));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("\u{00D7}").on_hover_text("Close (Esc)").clicked() {
+                        state.visible = false;
+                    }
+                });
+            });
+
+            ui.separator();
+
+            if state.locations.is_empty() {
+                ui.label("No references found.");
+            }
+
+            // Group locations by file
+            let mut by_file: Vec<(String, Vec<&LspLocation>)> = Vec::new();
+            for loc in &state.locations {
+                if let Some(entry) = by_file.iter_mut().find(|(uri, _)| uri == &loc.uri) {
+                    entry.1.push(loc);
+                } else {
+                    by_file.push((loc.uri.clone(), vec![loc]));
+                }
+            }
+
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    for (uri, locs) in &by_file {
+                        // Extract a nice display path from the URI
+                        let display_path = Url::parse(uri)
+                            .ok()
+                            .and_then(|u| u.to_file_path().ok())
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_else(|| uri.clone());
+
+                        // File header
+                        ui.label(
+                            egui::RichText::new(format!("{} ({})", display_path, locs.len()))
+                                .strong()
+                                .color(egui::Color32::from_rgb(200, 200, 200)),
+                        );
+
+                        // Individual references
+                        for loc in locs {
+                            let resp = ui.horizontal(|ui| {
+                                ui.add_space(16.0);
+                                let label = format!("Line {}, Col {}", loc.line + 1, loc.col + 1);
+                                let resp = ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(&label)
+                                            .monospace()
+                                            .color(egui::Color32::from_rgb(180, 180, 180)),
+                                    )
+                                    .sense(egui::Sense::click()),
+                                );
+                                if resp.hovered() {
+                                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                }
+                                resp
+                            });
+
+                            if resp.inner.clicked() {
+                                if let Ok(url) = Url::parse(uri) {
+                                    if let Ok(path) = url.to_file_path() {
+                                        navigate_to = Some((path, loc.line));
+                                    }
+                                }
+                            }
+                        }
+
+                        ui.add_space(2.0);
+                    }
+                });
+        });
+
+    navigate_to
+}
+
+/// Render the inline rename dialog as an egui Window.
+/// Returns `Some(new_name)` when the user confirms the rename (presses Enter).
+pub fn render_rename_dialog(
+    ctx: &egui::Context,
+    state: &mut RenameDialogState,
+) -> Option<String> {
+    if !state.visible {
+        return None;
+    }
+
+    let mut result: Option<String> = None;
+    let mut open = state.visible;
+
+    egui::Window::new("Rename Symbol")
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .title_bar(true)
+        .anchor(egui::Align2::CENTER_TOP, [0.0, 120.0])
+        .fixed_size([300.0, 50.0])
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("New name:");
+                let response = ui.add(
+                    egui::TextEdit::singleline(&mut state.input)
+                        .desired_width(200.0)
+                        .hint_text("Enter new name..."),
+                );
+
+                if state.needs_focus {
+                    response.request_focus();
+                    // Select all text in the input
+                    state.needs_focus = false;
+                }
+
+                // Enter to confirm
+                if response.lost_focus()
+                    && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                    && !state.input.is_empty()
+                {
+                    result = Some(state.input.clone());
+                    state.visible = false;
+                }
+            });
+        });
+
+    state.visible = open;
+
+    // Escape pressed while dialog is open
+    if state.visible && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        state.visible = false;
+    }
+
+    result
 }

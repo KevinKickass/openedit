@@ -10,7 +10,7 @@ use crate::git::GitManager;
 use crate::go_to_file::{self, GoToFileState};
 use crate::go_to_symbol::{self, GoToSymbolState};
 use crate::hex_view::{self, HexViewState};
-use crate::lsp::LspManager;
+use crate::lsp::{LspManager, ReferencesState, RenameDialogState};
 use crate::macro_recorder::{actions_from_script, actions_to_script, MacroAction, MacroRecorder};
 use crate::search_panel::{self, SearchPanelState};
 use crate::sidebar::{self, SidebarState};
@@ -163,6 +163,10 @@ pub struct OpenEditApp {
     macro_load_selected: Option<String>,
     /// DocId of the macro script editor tab (if open).
     macro_script_doc_id: Option<DocId>,
+    /// LSP Find References panel state.
+    references_state: ReferencesState,
+    /// LSP Rename dialog state.
+    rename_dialog: RenameDialogState,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -306,6 +310,8 @@ impl OpenEditApp {
             macro_load_open: false,
             macro_load_selected: None,
             macro_script_doc_id: None,
+            references_state: ReferencesState::default(),
+            rename_dialog: RenameDialogState::default(),
         };
 
         // Load saved macros from disk
@@ -652,6 +658,116 @@ impl OpenEditApp {
     }
 
 
+    /// Apply a workspace edit from an LSP rename response.
+    /// Opens files that are not already open and applies text edits.
+    fn apply_workspace_edit(&mut self, edit: &crate::lsp::LspWorkspaceEdit) {
+        let mut files_changed = 0usize;
+        let mut edits_applied = 0usize;
+
+        for (uri, text_edits) in &edit.changes {
+            let Ok(url) = Url::parse(uri) else { continue };
+            let Ok(path) = url.to_file_path() else { continue };
+
+            // Find or open the document
+            let tab_idx = if let Some(idx) = self
+                .documents
+                .iter()
+                .position(|d| d.path.as_ref() == Some(&path))
+            {
+                idx
+            } else {
+                // Open the file
+                self.open_file(path);
+                self.documents.len() - 1
+            };
+
+            let Some(doc) = self.documents.get_mut(tab_idx) else {
+                continue;
+            };
+
+            // Sort edits in reverse order (bottom to top, right to left)
+            // so earlier edits don't invalidate later positions.
+            let mut sorted_edits = text_edits.clone();
+            sorted_edits.sort_by(|a, b| {
+                b.start_line
+                    .cmp(&a.start_line)
+                    .then(b.start_col.cmp(&a.start_col))
+            });
+
+            for te in &sorted_edits {
+                let start_offset =
+                    doc.buffer.line_col_to_char(te.start_line, te.start_col);
+                let end_offset =
+                    doc.buffer.line_col_to_char(te.end_line, te.end_col);
+
+                // Delete the old range
+                if end_offset > start_offset {
+                    doc.buffer.remove(start_offset..end_offset);
+                }
+
+                // Insert the new text
+                if !te.new_text.is_empty() {
+                    doc.buffer.insert(start_offset, &te.new_text);
+                }
+
+                doc.modified = true;
+                edits_applied += 1;
+            }
+
+            files_changed += 1;
+        }
+
+        log::info!(
+            "Rename: applied {} edits across {} files",
+            edits_applied,
+            files_changed
+        );
+
+        // Trigger LSP didChange for affected open files
+        self.lsp_change_timer = Some(std::time::Instant::now());
+    }
+
+    /// Get the word under the cursor in the current document (for rename pre-fill).
+    fn word_under_cursor(&self) -> String {
+        let Some(doc) = self.documents.get(self.active_tab) else {
+            return String::new();
+        };
+        let pos = doc.cursors.primary().position;
+        let offset = doc.buffer.line_col_to_char(pos.line, pos.col);
+        let total = doc.buffer.len_chars();
+        if total == 0 {
+            return String::new();
+        }
+
+        let offset = offset.min(total.saturating_sub(1));
+        let ch = doc.buffer.char_at(offset);
+        if !ch.is_alphanumeric() && ch != '_' {
+            return String::new();
+        }
+
+        let mut start = offset;
+        while start > 0 {
+            let c = doc.buffer.char_at(start - 1);
+            if c.is_alphanumeric() || c == '_' {
+                start -= 1;
+            } else {
+                break;
+            }
+        }
+
+        let mut end = offset;
+        while end < total {
+            let c = doc.buffer.char_at(end);
+            if c.is_alphanumeric() || c == '_' {
+                end += 1;
+            } else {
+                break;
+            }
+        }
+
+        doc.buffer.slice_to_string(start..end)
+    }
+
     /// Replay the last recorded macro on the active document.
     fn replay_macro(&mut self) {
         let actions: Vec<MacroAction> = self.macro_recorder.last_recorded().to_vec();
@@ -990,6 +1106,30 @@ impl OpenEditApp {
                             cursor.col as u32,
                         );
                     }
+                }
+            }
+            "nav.find_references" => {
+                if let Some(doc) = self.documents.get(self.active_tab) {
+                    if let (Some(ref lang), Some(ref path)) = (&doc.language, &doc.path) {
+                        let uri = Url::from_file_path(path)
+                            .map(|u| u.to_string())
+                            .unwrap_or_default();
+                        let cursor = doc.cursors.primary().position;
+                        self.lsp_manager.request_references(
+                            lang,
+                            &uri,
+                            cursor.line as u32,
+                            cursor.col as u32,
+                        );
+                    }
+                }
+            }
+            "nav.rename_symbol" => {
+                let word = self.word_under_cursor();
+                if !word.is_empty() {
+                    self.rename_dialog.input = word;
+                    self.rename_dialog.visible = true;
+                    self.rename_dialog.needs_focus = true;
                 }
             }
             "nav.hover_info" => {
@@ -1481,6 +1621,15 @@ impl eframe::App for OpenEditApp {
                 }
             }
         }
+        if let Some(locations) = self.lsp_manager.take_references() {
+            // Show references panel
+            self.references_state.locations = locations;
+            self.references_state.visible = true;
+        }
+        if let Some(workspace_edit) = self.lsp_manager.take_rename() {
+            // Apply workspace edit from rename
+            self.apply_workspace_edit(&workspace_edit);
+        }
 
         // Periodic git refresh
         self.git_state.maybe_refresh();
@@ -1665,6 +1814,8 @@ impl eframe::App for OpenEditApp {
         let mut diff_next_hunk = false;
         let mut diff_prev_hunk = false;
         let mut go_to_definition = false;
+        let mut find_references = false;
+        let mut rename_symbol = false;
 
         ctx.input(|input| {
             let ctrl = input.modifiers.ctrl || input.modifiers.mac_cmd;
@@ -1678,6 +1829,7 @@ impl eframe::App for OpenEditApp {
                     match key {
                         egui::Key::F7 if shift => diff_prev_hunk = true,
                         egui::Key::F7 => diff_next_hunk = true,
+                        egui::Key::F12 if shift => find_references = true,
                         egui::Key::F12 if !shift => go_to_definition = true,
                         egui::Key::F11 => toggle_zen = true,
                         egui::Key::Backslash if ctrl => toggle_split = true,
@@ -1707,9 +1859,13 @@ impl eframe::App for OpenEditApp {
                         egui::Key::Num0 if ctrl => zoom_reset = true,
                         egui::Key::F2 if ctrl => toggle_bookmark = true,
                         egui::Key::F2 if shift => prev_bookmark = true,
-                        egui::Key::F2 => next_bookmark = true,
+                        egui::Key::F2 => rename_symbol = true,
                         egui::Key::Escape => {
-                            if self.diff_state.active {
+                            if self.rename_dialog.visible {
+                                self.rename_dialog.visible = false;
+                            } else if self.references_state.visible {
+                                self.references_state.visible = false;
+                            } else if self.diff_state.active {
                                 self.diff_state.active = false;
                             } else if self.go_to_symbol_state.open {
                                 self.go_to_symbol_state.open = false;
@@ -1914,6 +2070,34 @@ impl eframe::App for OpenEditApp {
                         cursor.col as u32,
                     );
                 }
+            }
+        }
+
+        if find_references {
+            // Shift+F12: request find all references at cursor position via LSP
+            if let Some(doc) = self.documents.get(self.active_tab) {
+                if let (Some(ref lang), Some(ref path)) = (&doc.language, &doc.path) {
+                    let uri = Url::from_file_path(path)
+                        .map(|u| u.to_string())
+                        .unwrap_or_default();
+                    let cursor = doc.cursors.primary().position;
+                    self.lsp_manager.request_references(
+                        lang,
+                        &uri,
+                        cursor.line as u32,
+                        cursor.col as u32,
+                    );
+                }
+            }
+        }
+
+        if rename_symbol {
+            // F2: open rename dialog pre-filled with word under cursor
+            let word = self.word_under_cursor();
+            if !word.is_empty() {
+                self.rename_dialog.input = word;
+                self.rename_dialog.visible = true;
+                self.rename_dialog.needs_focus = true;
             }
         }
 
@@ -2157,7 +2341,11 @@ impl eframe::App for OpenEditApp {
                             ui.close_menu();
                         }
                         if ui.button("Go to References  Shift+F12").clicked() {
-                            log::info!("Go to References: LSP required");
+                            self.execute_command("nav.find_references");
+                            ui.close_menu();
+                        }
+                        if ui.button("Rename Symbol     F2").clicked() {
+                            self.execute_command("nav.rename_symbol");
                             ui.close_menu();
                         }
                     });
@@ -2575,13 +2763,14 @@ impl eframe::App for OpenEditApp {
                 // Editor viewport (main area minus status bar and optional find-in-files panel)
                 let show_search = self.search_state.visible;
                 let show_find_in_files = self.find_in_files_state.visible;
+                let show_references = self.references_state.visible;
 
                 // Reserve space for status bar at bottom
                 let available = main_ui.available_rect_before_wrap();
                 let status_bar_height = 24.0;
                 let content_height = available.height() - status_bar_height;
 
-                // Split between editor, find-in-files panel, and terminal
+                // Split between editor, find-in-files/references panel, and terminal
                 let terminal_height = if self.terminal_state.visible {
                     (content_height * self.terminal_state.height_fraction)
                         .max(80.0)
@@ -2590,7 +2779,8 @@ impl eframe::App for OpenEditApp {
                     0.0
                 };
                 let remaining_height = content_height - terminal_height;
-                let find_panel_height = if show_find_in_files {
+                let bottom_panel_visible = show_find_in_files || show_references;
+                let find_panel_height = if bottom_panel_visible {
                     (remaining_height * 0.30)
                         .max(150.0)
                         .min(remaining_height - 100.0)
@@ -3181,9 +3371,10 @@ impl eframe::App for OpenEditApp {
                     }
                 }
 
-                // Find in Files panel
+                // Find in Files / References bottom panel
                 let mut find_navigate: Option<(PathBuf, usize)> = None;
-                if show_find_in_files {
+                let mut ref_navigate: Option<(PathBuf, usize)> = None;
+                if bottom_panel_visible {
                     let find_rect = egui::Rect::from_min_size(
                         egui::Pos2::new(available.left(), available.top() + editor_height),
                         egui::Vec2::new(available.width(), find_panel_height),
@@ -3194,10 +3385,17 @@ impl eframe::App for OpenEditApp {
                             .layout(egui::Layout::top_down(egui::Align::LEFT)),
                     );
                     find_ui.separator();
-                    find_navigate = crate::find_in_files::render_find_in_files_panel(
-                        &mut find_ui,
-                        &mut self.find_in_files_state,
-                    );
+                    if show_references {
+                        ref_navigate = crate::lsp::render_references_panel(
+                            &mut find_ui,
+                            &mut self.references_state,
+                        );
+                    } else if show_find_in_files {
+                        find_navigate = crate::find_in_files::render_find_in_files_panel(
+                            &mut find_ui,
+                            &mut self.find_in_files_state,
+                        );
+                    }
                 }
 
                 // Terminal panel
@@ -3226,8 +3424,9 @@ impl eframe::App for OpenEditApp {
                     }
                 }
 
-                // Handle navigation from find-in-files result click
-                if let Some((path, line)) = find_navigate {
+                // Handle navigation from find-in-files or references result click
+                let nav_target = find_navigate.or(ref_navigate);
+                if let Some((path, line)) = nav_target {
                     // Check if the file is already open
                     let existing_tab = self
                         .documents
@@ -3364,6 +3563,28 @@ impl eframe::App for OpenEditApp {
                     });
                 });
             self.go_to_line_open = open;
+        }
+
+        // Rename Symbol dialog (F2)
+        if self.rename_dialog.visible {
+            if let Some(new_name) = crate::lsp::render_rename_dialog(ctx, &mut self.rename_dialog) {
+                // Send rename request to LSP
+                if let Some(doc) = self.documents.get(self.active_tab) {
+                    if let (Some(ref lang), Some(ref path)) = (&doc.language, &doc.path) {
+                        let uri = Url::from_file_path(path)
+                            .map(|u| u.to_string())
+                            .unwrap_or_default();
+                        let cursor = doc.cursors.primary().position;
+                        self.lsp_manager.request_rename(
+                            lang,
+                            &uri,
+                            cursor.line as u32,
+                            cursor.col as u32,
+                            &new_name,
+                        );
+                    }
+                }
+            }
         }
 
         // Run Macro Multiple Times dialog
@@ -3867,6 +4088,8 @@ impl eframe::App for OpenEditApp {
                                     ("Ctrl+Shift+F", "Find in Files"),
                                     ("Ctrl+Shift+P", "Command Palette"),
                                     ("F12", "Go to Definition (LSP)"),
+                                    ("Shift+F12", "Find All References (LSP)"),
+                                    ("F2", "Rename Symbol (LSP)"),
                                     ("Ctrl+Click", "Go to Definition (LSP)"),
                                     ("Ctrl+Hover", "Show Hover Info (LSP)"),
                                 ],
