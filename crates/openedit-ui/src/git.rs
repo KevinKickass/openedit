@@ -227,6 +227,7 @@ impl GitManager {
     }
 
     /// Compute blame annotations for a file.
+    /// Each entry stores "author  YYYY-MM-DD" for display.
     pub fn compute_blame(&mut self, file_path: &Path) {
         self.blame_info.clear();
         let Some(repo) = self.open_repo() else { return };
@@ -245,13 +246,81 @@ impl GitManager {
             };
             let sig = hunk.final_signature();
             let author = sig.name().unwrap_or("?");
+            let epoch = sig.when().seconds();
+            let date_str = format_epoch(epoch);
+            let annotation = format!("{} {}", author, date_str);
             let start_line = hunk.final_start_line().saturating_sub(1);
             let line_count = hunk.lines_in_hunk();
             for offset in 0..line_count {
                 self.blame_info
-                    .insert(start_line + offset, author.to_string());
+                    .insert(start_line + offset, annotation.clone());
             }
         }
+    }
+
+    /// Stage a file in the git index (equivalent to `git add <file>`).
+    /// Returns Ok(()) on success, Err with a message on failure.
+    pub fn stage_file(&mut self, file_path: &Path) -> Result<(), String> {
+        let repo = self.open_repo().ok_or("No git repository found")?;
+        let root = self
+            .repo_root
+            .as_ref()
+            .ok_or("No repository root")?;
+        let rel_path = file_path
+            .strip_prefix(root)
+            .map_err(|_| "File is not within the repository")?;
+
+        let mut index = repo.index().map_err(|e| format!("Failed to read index: {}", e))?;
+        index
+            .add_path(rel_path)
+            .map_err(|e| format!("Failed to stage file: {}", e))?;
+        index
+            .write()
+            .map_err(|e| format!("Failed to write index: {}", e))?;
+
+        // Refresh statuses after staging
+        self.refresh_statuses();
+        Ok(())
+    }
+
+    /// Commit all staged changes with the given message.
+    /// Returns Ok(commit_id_string) on success, Err with a message on failure.
+    pub fn commit(&mut self, message: &str) -> Result<String, String> {
+        let repo = self.open_repo().ok_or("No git repository found")?;
+
+        let mut index = repo.index().map_err(|e| format!("Failed to read index: {}", e))?;
+        let tree_oid = index
+            .write_tree()
+            .map_err(|e| format!("Failed to write tree: {}", e))?;
+        let tree = repo
+            .find_tree(tree_oid)
+            .map_err(|e| format!("Failed to find tree: {}", e))?;
+
+        let sig = repo
+            .signature()
+            .map_err(|e| format!("Failed to get signature (configure user.name and user.email): {}", e))?;
+
+        // Get parent commit (HEAD), if any
+        let parents: Vec<git2::Commit<'_>> = match repo.head() {
+            Ok(head) => {
+                let commit = head
+                    .peel_to_commit()
+                    .map_err(|e| format!("Failed to peel HEAD to commit: {}", e))?;
+                vec![commit]
+            }
+            Err(_) => vec![], // Initial commit, no parents
+        };
+        let parent_refs: Vec<&git2::Commit<'_>> = parents.iter().collect();
+
+        let oid = repo
+            .commit(Some("HEAD"), &sig, &sig, message, &tree, &parent_refs)
+            .map_err(|e| format!("Commit failed: {}", e))?;
+
+        // Refresh statuses after commit
+        self.refresh_statuses();
+        self.invalidate_file_cache();
+
+        Ok(format!("{:.7}", oid))
     }
 
     /// Get line diff statuses for a given file.
@@ -407,6 +476,47 @@ pub fn render_git_gutter_mark(
     }
 }
 
+/// Format a Unix epoch timestamp as YYYY-MM-DD.
+fn format_epoch(epoch: i64) -> String {
+    // Simple date conversion without external crate
+    const SECS_PER_DAY: i64 = 86400;
+    let days = epoch / SECS_PER_DAY;
+
+    // Days since 1970-01-01
+    let mut y = 1970i64;
+    let mut remaining_days = days;
+
+    loop {
+        let days_in_year = if is_leap_year(y) { 366 } else { 365 };
+        if remaining_days < days_in_year {
+            break;
+        }
+        remaining_days -= days_in_year;
+        y += 1;
+    }
+
+    let leap = is_leap_year(y);
+    let month_days: [i64; 12] = [
+        31,
+        if leap { 29 } else { 28 },
+        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+    ];
+    let mut m = 0;
+    for md in &month_days {
+        if remaining_days < *md {
+            break;
+        }
+        remaining_days -= md;
+        m += 1;
+    }
+
+    format!("{:04}-{:02}-{:02}", y, m + 1, remaining_days + 1)
+}
+
+fn is_leap_year(y: i64) -> bool {
+    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+}
+
 /// Get display indicator for file git status.
 pub fn git_status_indicator(status: FileGitStatus) -> (&'static str, egui::Color32) {
     match status {
@@ -494,5 +604,45 @@ mod tests {
         let mgr = GitManager::default();
         assert!(!mgr.show_blame);
         assert!(mgr.blame_info.is_empty());
+    }
+
+    #[test]
+    fn test_format_epoch_unix_epoch() {
+        // 1970-01-01 00:00:00 UTC
+        assert_eq!(format_epoch(0), "1970-01-01");
+    }
+
+    #[test]
+    fn test_format_epoch_known_date() {
+        // 2024-01-15 12:00:00 UTC = 1705320000
+        assert_eq!(format_epoch(1705320000), "2024-01-15");
+    }
+
+    #[test]
+    fn test_format_epoch_leap_year() {
+        // 2020-02-29 00:00:00 UTC = 1582934400
+        assert_eq!(format_epoch(1582934400), "2020-02-29");
+    }
+
+    #[test]
+    fn test_is_leap_year() {
+        assert!(is_leap_year(2000));
+        assert!(is_leap_year(2024));
+        assert!(!is_leap_year(1900));
+        assert!(!is_leap_year(2023));
+    }
+
+    #[test]
+    fn test_stage_file_no_repo() {
+        let mut mgr = GitManager::new();
+        let result = mgr.stage_file(std::path::Path::new("/nonexistent/file.txt"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_commit_no_repo() {
+        let mut mgr = GitManager::new();
+        let result = mgr.commit("test message");
+        assert!(result.is_err());
     }
 }

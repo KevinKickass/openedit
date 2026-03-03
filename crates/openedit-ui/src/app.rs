@@ -111,6 +111,12 @@ pub struct OpenEditApp {
     git_state: GitManager,
     /// Current git branch name.
     git_branch: Option<String>,
+    /// Git commit dialog state.
+    git_commit_dialog_open: bool,
+    git_commit_message: String,
+    /// Status message from last git operation (shown briefly).
+    git_status_message: Option<String>,
+    git_status_message_time: Option<std::time::Instant>,
     /// Whether bracket pair colorization is enabled.
     bracket_colorization: bool,
     /// LSP completion items (separate from word-based autocomplete).
@@ -255,6 +261,10 @@ impl OpenEditApp {
             terminal_state: TerminalState::default(),
             git_state: GitManager::new(),
             git_branch: None,
+            git_commit_dialog_open: false,
+            git_commit_message: String::new(),
+            git_status_message: None,
+            git_status_message_time: None,
             bracket_colorization: true,
             lsp_completions: Vec::new(),
             lsp_completion_selected: 0,
@@ -1083,6 +1093,39 @@ impl OpenEditApp {
                         }
                     }
                 }
+            }
+            "git.stage_file" => {
+                if let Some(doc) = self.documents.get(self.active_tab) {
+                    if let Some(ref path) = doc.path {
+                        let path = path.clone();
+                        match self.git_state.stage_file(&path) {
+                            Ok(()) => {
+                                let name = path
+                                    .file_name()
+                                    .map(|n| n.to_string_lossy().to_string())
+                                    .unwrap_or_else(|| "file".to_string());
+                                self.git_status_message =
+                                    Some(format!("Staged: {}", name));
+                                self.git_status_message_time =
+                                    Some(std::time::Instant::now());
+                            }
+                            Err(e) => {
+                                self.git_status_message =
+                                    Some(format!("Stage failed: {}", e));
+                                self.git_status_message_time =
+                                    Some(std::time::Instant::now());
+                            }
+                        }
+                    } else {
+                        self.git_status_message =
+                            Some("Cannot stage: file has no path (save first)".to_string());
+                        self.git_status_message_time = Some(std::time::Instant::now());
+                    }
+                }
+            }
+            "git.commit" => {
+                self.git_commit_dialog_open = true;
+                self.git_commit_message.clear();
             }
             "edit.select_all_occurrences" => {
                 if let Some(doc) = self.documents.get_mut(self.active_tab) {
@@ -2976,6 +3019,84 @@ impl eframe::App for OpenEditApp {
                     });
                 });
             self.column_editor_open = open;
+        }
+
+        // Git commit dialog
+        if self.git_commit_dialog_open {
+            let mut open = self.git_commit_dialog_open;
+            egui::Window::new("Git Commit")
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .fixed_size([400.0, 160.0])
+                .show(ctx, |ui| {
+                    ui.label("Commit message:");
+                    let response = ui.add(
+                        egui::TextEdit::multiline(&mut self.git_commit_message)
+                            .desired_rows(3)
+                            .desired_width(f32::INFINITY)
+                            .hint_text("Enter commit message..."),
+                    );
+                    response.request_focus();
+
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        let commit_enabled = !self.git_commit_message.trim().is_empty();
+                        if ui
+                            .add_enabled(commit_enabled, egui::Button::new("Commit"))
+                            .clicked()
+                        {
+                            let msg = self.git_commit_message.trim().to_string();
+                            match self.git_state.commit(&msg) {
+                                Ok(oid) => {
+                                    self.git_status_message =
+                                        Some(format!("Committed: {}", oid));
+                                    self.git_status_message_time =
+                                        Some(std::time::Instant::now());
+                                    self.git_branch = self.git_state.branch.clone();
+                                }
+                                Err(e) => {
+                                    self.git_status_message =
+                                        Some(format!("Commit failed: {}", e));
+                                    self.git_status_message_time =
+                                        Some(std::time::Instant::now());
+                                }
+                            }
+                            self.git_commit_dialog_open = false;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.git_commit_dialog_open = false;
+                        }
+                    });
+                });
+            self.git_commit_dialog_open = open;
+        }
+
+        // Git status message toast (shown for 4 seconds)
+        if let Some(ref msg) = self.git_status_message.clone() {
+            let elapsed = self
+                .git_status_message_time
+                .map(|t| t.elapsed().as_secs_f32())
+                .unwrap_or(10.0);
+            if elapsed < 4.0 {
+                egui::Window::new("git_status_toast")
+                    .title_bar(false)
+                    .collapsible(false)
+                    .resizable(false)
+                    .anchor(egui::Align2::CENTER_BOTTOM, [0.0, -40.0])
+                    .show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(msg)
+                                    .color(egui::Color32::from_rgb(200, 200, 200)),
+                            );
+                        });
+                    });
+            } else {
+                self.git_status_message = None;
+                self.git_status_message_time = None;
+            }
         }
 
         // About dialog

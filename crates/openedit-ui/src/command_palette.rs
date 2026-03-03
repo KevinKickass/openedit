@@ -443,6 +443,16 @@ pub fn all_commands() -> Vec<Command> {
             label: "Toggle Git Blame",
             shortcut: "",
         },
+        Command {
+            id: "git.stage_file",
+            label: "Git: Stage Current File",
+            shortcut: "",
+        },
+        Command {
+            id: "git.commit",
+            label: "Git: Commit",
+            shortcut: "",
+        },
         // Bracket colors
         Command {
             id: "view.toggle_bracket_colors",
