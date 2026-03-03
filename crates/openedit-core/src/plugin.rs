@@ -59,6 +59,43 @@ pub struct PluginContext<'a> {
     pub active_path: Option<&'a str>,
     /// Current selection range: (start_offset, end_offset) in chars.
     pub selection: Option<(usize, usize)>,
+    /// The actual selected text content (not just the range).
+    pub selected_text: Option<&'a str>,
+    /// Current cursor line number (0-based).
+    pub cursor_line: usize,
+    /// Current cursor column (0-based).
+    pub cursor_col: usize,
+    /// Detected language of the current file (e.g. "rust", "python").
+    pub language: Option<&'a str>,
+    /// Total number of lines in the active document.
+    pub line_count: usize,
+    /// Just the file name (not the full path), e.g. "main.rs".
+    pub file_name: Option<&'a str>,
+    /// Whether the active document has unsaved changes.
+    pub is_modified: bool,
+    /// Number of currently open tabs.
+    pub tab_count: usize,
+    /// Editor version string.
+    pub editor_version: &'a str,
+}
+
+impl<'a> Default for PluginContext<'a> {
+    fn default() -> Self {
+        Self {
+            active_text: None,
+            active_path: None,
+            selection: None,
+            selected_text: None,
+            cursor_line: 0,
+            cursor_col: 0,
+            language: None,
+            line_count: 0,
+            file_name: None,
+            is_modified: false,
+            tab_count: 0,
+            editor_version: "",
+        }
+    }
 }
 
 /// Result of a plugin text transformation.
@@ -73,6 +110,14 @@ pub enum PluginAction {
     InsertAtCursor(String),
     /// Show a message/notification to the user.
     ShowMessage(String),
+    /// Open a file path in a new tab.
+    OpenFile(String),
+    /// Execute an editor command by its ID (e.g. "file.save").
+    RunCommand(String),
+    /// Show a temporary message in the status bar.
+    SetStatusMessage(String),
+    /// Execute multiple actions in sequence.
+    Multiple(Vec<PluginAction>),
 }
 
 /// The core plugin trait. Implement this to create an OpenEdit plugin.
@@ -302,7 +347,7 @@ mod tests {
     fn test_execute_command() {
         let mut mgr = PluginManager::new();
         mgr.register(Box::new(TestPlugin::new())).unwrap();
-        let ctx = PluginContext { active_text: None, active_path: None, selection: None };
+        let ctx = PluginContext::default();
         let action = mgr.execute_command("test.plugin", "test.hello", &ctx);
         match action {
             PluginAction::ShowMessage(msg) => assert_eq!(msg, "Hello from plugin!"),
@@ -315,6 +360,197 @@ mod tests {
         let mut mgr = PluginManager::new();
         mgr.register(Box::new(TestPlugin::new())).unwrap();
         mgr.unregister("test.plugin");
+        assert!(mgr.list().is_empty());
+    }
+
+    #[test]
+    fn test_plugin_context_default() {
+        let ctx = PluginContext::default();
+        assert!(ctx.active_text.is_none());
+        assert!(ctx.active_path.is_none());
+        assert!(ctx.selection.is_none());
+        assert!(ctx.selected_text.is_none());
+        assert_eq!(ctx.cursor_line, 0);
+        assert_eq!(ctx.cursor_col, 0);
+        assert!(ctx.language.is_none());
+        assert_eq!(ctx.line_count, 0);
+        assert!(ctx.file_name.is_none());
+        assert!(!ctx.is_modified);
+        assert_eq!(ctx.tab_count, 0);
+        assert_eq!(ctx.editor_version, "");
+    }
+
+    #[test]
+    fn test_plugin_context_with_fields() {
+        let text = "hello world\nsecond line";
+        let ctx = PluginContext {
+            active_text: Some(text),
+            active_path: Some("/home/user/test.rs"),
+            selection: Some((0, 5)),
+            selected_text: Some("hello"),
+            cursor_line: 0,
+            cursor_col: 5,
+            language: Some("rust"),
+            line_count: 2,
+            file_name: Some("test.rs"),
+            is_modified: true,
+            tab_count: 3,
+            editor_version: "0.1.0",
+        };
+        assert_eq!(ctx.active_text.unwrap(), text);
+        assert_eq!(ctx.selected_text.unwrap(), "hello");
+        assert_eq!(ctx.cursor_line, 0);
+        assert_eq!(ctx.cursor_col, 5);
+        assert_eq!(ctx.language.unwrap(), "rust");
+        assert_eq!(ctx.line_count, 2);
+        assert_eq!(ctx.file_name.unwrap(), "test.rs");
+        assert!(ctx.is_modified);
+        assert_eq!(ctx.tab_count, 3);
+        assert_eq!(ctx.editor_version, "0.1.0");
+    }
+
+    #[test]
+    fn test_plugin_action_open_file() {
+        let action = PluginAction::OpenFile("/tmp/test.txt".into());
+        match action {
+            PluginAction::OpenFile(path) => assert_eq!(path, "/tmp/test.txt"),
+            _ => panic!("Expected OpenFile"),
+        }
+    }
+
+    #[test]
+    fn test_plugin_action_run_command() {
+        let action = PluginAction::RunCommand("file.save".into());
+        match action {
+            PluginAction::RunCommand(cmd) => assert_eq!(cmd, "file.save"),
+            _ => panic!("Expected RunCommand"),
+        }
+    }
+
+    #[test]
+    fn test_plugin_action_set_status_message() {
+        let action = PluginAction::SetStatusMessage("Done!".into());
+        match action {
+            PluginAction::SetStatusMessage(msg) => assert_eq!(msg, "Done!"),
+            _ => panic!("Expected SetStatusMessage"),
+        }
+    }
+
+    #[test]
+    fn test_plugin_action_multiple() {
+        let action = PluginAction::Multiple(vec![
+            PluginAction::InsertAtCursor("hi".into()),
+            PluginAction::ShowMessage("inserted".into()),
+            PluginAction::SetStatusMessage("status".into()),
+        ]);
+        match action {
+            PluginAction::Multiple(actions) => {
+                assert_eq!(actions.len(), 3);
+                match &actions[0] {
+                    PluginAction::InsertAtCursor(s) => assert_eq!(s, "hi"),
+                    _ => panic!("Expected InsertAtCursor"),
+                }
+                match &actions[1] {
+                    PluginAction::ShowMessage(s) => assert_eq!(s, "inserted"),
+                    _ => panic!("Expected ShowMessage"),
+                }
+                match &actions[2] {
+                    PluginAction::SetStatusMessage(s) => assert_eq!(s, "status"),
+                    _ => panic!("Expected SetStatusMessage"),
+                }
+            }
+            _ => panic!("Expected Multiple"),
+        }
+    }
+
+    /// A plugin that uses the expanded context to produce richer output.
+    struct ContextAwarePlugin;
+
+    impl Plugin for ContextAwarePlugin {
+        fn info(&self) -> PluginInfo {
+            PluginInfo {
+                id: "test.context_aware".into(),
+                name: "Context Aware".into(),
+                version: "1.0.0".into(),
+                description: "Uses expanded context".into(),
+            }
+        }
+
+        fn commands(&self) -> Vec<PluginCommand> {
+            vec![PluginCommand {
+                id: "test.context_aware.info".into(),
+                label: "Show Context Info".into(),
+                shortcut: None,
+            }]
+        }
+
+        fn execute_command(&mut self, command_id: &str, ctx: &PluginContext) -> PluginAction {
+            if command_id == "test.context_aware.info" {
+                let msg = format!(
+                    "line={} col={} lang={} lines={} modified={} tabs={} file={}",
+                    ctx.cursor_line,
+                    ctx.cursor_col,
+                    ctx.language.unwrap_or("none"),
+                    ctx.line_count,
+                    ctx.is_modified,
+                    ctx.tab_count,
+                    ctx.file_name.unwrap_or("none"),
+                );
+                PluginAction::ShowMessage(msg)
+            } else {
+                PluginAction::None
+            }
+        }
+    }
+
+    #[test]
+    fn test_context_aware_plugin() {
+        let mut mgr = PluginManager::new();
+        mgr.register(Box::new(ContextAwarePlugin)).unwrap();
+
+        let ctx = PluginContext {
+            cursor_line: 10,
+            cursor_col: 5,
+            language: Some("rust"),
+            line_count: 100,
+            is_modified: true,
+            tab_count: 3,
+            file_name: Some("main.rs"),
+            ..PluginContext::default()
+        };
+
+        let action = mgr.execute_command("test.context_aware", "test.context_aware.info", &ctx);
+        match action {
+            PluginAction::ShowMessage(msg) => {
+                assert!(msg.contains("line=10"));
+                assert!(msg.contains("col=5"));
+                assert!(msg.contains("lang=rust"));
+                assert!(msg.contains("lines=100"));
+                assert!(msg.contains("modified=true"));
+                assert!(msg.contains("tabs=3"));
+                assert!(msg.contains("file=main.rs"));
+            }
+            _ => panic!("Expected ShowMessage"),
+        }
+    }
+
+    #[test]
+    fn test_broadcast_event_with_disabled() {
+        let mut mgr = PluginManager::new();
+        mgr.register(Box::new(TestPlugin::new())).unwrap();
+        mgr.set_enabled("test.plugin", false);
+        // broadcast should not panic, even with disabled plugins
+        mgr.broadcast_event(&EditorEvent::Startup);
+        mgr.broadcast_event(&EditorEvent::Shutdown);
+    }
+
+    #[test]
+    fn test_shutdown_clears_all() {
+        let mut mgr = PluginManager::new();
+        mgr.register(Box::new(TestPlugin::new())).unwrap();
+        mgr.register(Box::new(ContextAwarePlugin)).unwrap();
+        assert_eq!(mgr.list().len(), 2);
+        mgr.shutdown();
         assert!(mgr.list().is_empty());
     }
 }
