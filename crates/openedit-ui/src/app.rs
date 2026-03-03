@@ -1891,6 +1891,7 @@ impl eframe::App for OpenEditApp {
                             self.word_wrap,
                             &mut self.macro_recorder,
                             Some(&render_context),
+                            &mut self.snippet_engine,
                         );
                     }
 
@@ -2381,6 +2382,7 @@ impl eframe::App for OpenEditApp {
                                 self.word_wrap,
                                 &mut self.macro_recorder,
                                 Some(&render_context),
+                                &mut self.snippet_engine,
                             );
                         }
                     }
@@ -2407,6 +2409,7 @@ impl eframe::App for OpenEditApp {
                                 self.word_wrap,
                                 &mut self.macro_recorder,
                                 Some(&render_context),
+                                &mut self.snippet_engine,
                             );
                         }
                     }
@@ -2454,6 +2457,7 @@ impl eframe::App for OpenEditApp {
                             self.word_wrap,
                             &mut self.macro_recorder,
                             Some(&render_context),
+                            &mut self.snippet_engine,
                         );
                     } else {
                         source_for_preview = String::new();
@@ -2493,6 +2497,7 @@ impl eframe::App for OpenEditApp {
                             self.word_wrap,
                             &mut self.macro_recorder,
                             Some(&render_context),
+                            &mut self.snippet_engine,
                         );
                         if was_modified {
                             // Trigger debounced LSP didChange and request completions

@@ -445,10 +445,14 @@ pub fn builtin_snippets() -> Vec<Snippet> {
 }
 
 /// Find matching snippets for the current word being typed.
-pub fn find_matching_snippets(trigger: &str, language: &str) -> Vec<&'static Snippet> {
-    // Use a lazy static-like approach (just filter the built-in list)
-    // In practice this is called rarely, so it's fine.
-    Vec::new() // The actual matching happens in the snippet engine below
+pub fn find_matching_snippets(trigger: &str, language: &str) -> Vec<Snippet> {
+    builtin_snippets()
+        .into_iter()
+        .filter(|s| {
+            s.trigger.starts_with(trigger)
+                && (s.language.eq_ignore_ascii_case(language) || language.is_empty())
+        })
+        .collect()
 }
 
 /// Snippet engine that manages snippet lookup and expansion.

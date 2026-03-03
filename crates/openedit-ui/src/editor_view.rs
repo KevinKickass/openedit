@@ -3,6 +3,7 @@ use crate::git::{self, LineDiffStatus};
 use crate::gutter;
 use crate::lsp::{self, LspDiagnostic};
 use crate::macro_recorder::{MacroAction, MacroRecorder};
+use crate::snippets::SnippetEngine;
 use crate::theme::EditorTheme;
 use egui::{self, Pos2, Rect, Ui, Vec2};
 use openedit_core::cursor::Position;
@@ -77,6 +78,7 @@ pub fn render_editor(
     word_wrap: bool,
     macro_rec: &mut MacroRecorder,
     render_ctx: Option<&EditorRenderContext<'_>>,
+    snippet_engine: &mut SnippetEngine,
 ) -> bool {
     let line_height = line_height_for_font(font_size);
     let char_width = char_width_for_font(font_size);
@@ -716,7 +718,7 @@ pub fn render_editor(
 
     // Keyboard input
     let cursor_before = doc.cursors.primary().position;
-    let modified = handle_keyboard_input(ui, doc, macro_rec);
+    let modified = handle_keyboard_input(ui, doc, macro_rec, snippet_engine);
     let cursor_moved_by_keyboard = doc.cursors.primary().position != cursor_before || modified;
 
     // Update autocomplete after edits
@@ -920,7 +922,12 @@ fn render_selection_wrapped(
     }
 }
 
-fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroRecorder) -> bool {
+fn handle_keyboard_input(
+    ui: &mut Ui,
+    doc: &mut Document,
+    macro_rec: &mut MacroRecorder,
+    snippet_engine: &mut SnippetEngine,
+) -> bool {
     let mut modified = false;
     let mut copy_text: Option<String> = None;
     let page_size = {
@@ -1210,7 +1217,12 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             }
                         }
                         egui::Key::Tab if shift => {
-                            doc.unindent();
+                            // If a snippet is active, navigate to previous placeholder
+                            if snippet_engine.is_active() {
+                                snippet_engine.prev_placeholder(doc);
+                            } else {
+                                doc.unindent();
+                            }
                             modified = true;
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
@@ -1222,8 +1234,20 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             }
                         }
                         egui::Key::Tab => {
-                            doc.insert_text("    ");
-                            modified = true;
+                            // If a snippet is active, navigate to next placeholder
+                            if snippet_engine.is_active() {
+                                snippet_engine.next_placeholder(doc);
+                                modified = true;
+                            } else {
+                                // Try to expand a snippet from the word before cursor
+                                if snippet_engine.try_expand(doc) {
+                                    modified = true;
+                                } else {
+                                    // No snippet matched, insert regular tab (4 spaces)
+                                    doc.insert_text("    ");
+                                    modified = true;
+                                }
+                            }
                             if is_recording {
                                 pending_macro_actions.push(MacroAction::KeyAction {
                                     key: key_name,
@@ -1305,6 +1329,8 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                             doc.select_all_occurrences();
                         }
                         egui::Key::Escape => {
+                            // Cancel active snippet navigation
+                            snippet_engine.cancel();
                             if doc.cursors.cursor_count() > 1 {
                                 doc.cursors.clear_extra_cursors();
                             }
