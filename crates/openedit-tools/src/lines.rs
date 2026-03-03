@@ -27,6 +27,32 @@ pub fn reverse_lines(text: &str) -> String {
     lines.join("\n")
 }
 
+/// Shuffle lines randomly.
+pub fn shuffle_lines(text: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::Hasher;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let mut lines: Vec<&str> = text.lines().collect();
+    if lines.len() <= 1 {
+        return lines.join("\n");
+    }
+
+    let seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as u64;
+
+    for i in (1..lines.len()).rev() {
+        let mut hasher = DefaultHasher::new();
+        hasher.write_u64(seed.wrapping_mul(i as u64));
+        let j = (hasher.finish() as usize) % (i + 1);
+        lines.swap(i, j);
+    }
+
+    lines.join("\n")
+}
+
 /// Trim trailing whitespace from each line.
 pub fn trim_trailing(text: &str) -> String {
     text.lines()
@@ -62,5 +88,23 @@ mod tests {
     #[test]
     fn test_trim_trailing() {
         assert_eq!(trim_trailing("a  \nb\t\nc"), "a\nb\nc");
+    }
+
+    #[test]
+    fn test_shuffle_lines() {
+        let input = "a\nb\nc\nd\ne";
+        let result = shuffle_lines(input);
+        let lines: Vec<&str> = result.lines().collect();
+        assert_eq!(lines.len(), 5);
+        assert!(lines.contains(&"a"));
+        assert!(lines.contains(&"b"));
+        assert!(lines.contains(&"c"));
+        assert!(lines.contains(&"d"));
+        assert!(lines.contains(&"e"));
+    }
+
+    #[test]
+    fn test_shuffle_lines_single() {
+        assert_eq!(shuffle_lines("a"), "a");
     }
 }
