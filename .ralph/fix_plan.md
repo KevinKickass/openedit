@@ -214,13 +214,16 @@
 - [x] Find references (Shift+F12, grouped results panel)
 - [x] Rename symbol (F2, inline dialog, workspace-wide edits)
 
-### Plugin Architecture
-- [ ] Plugin API definition (Rust trait-based + optional WASM)
-- [ ] Plugin manifest format (TOML)
-- [ ] Plugin loading/unloading at runtime
-- [ ] Plugin commands register into command palette
-- [ ] Plugin access: buffer read/write, UI panels, status bar, menus
-- [ ] Plugin distribution format
+### Plugin Architecture (done)
+- [x] Plugin API definition (Rust trait-based Plugin trait, PluginManager, PluginContext, PluginAction)
+- [x] Plugin manifest format (TOML plugin.toml with commands, actions, input/output config)
+- [x] Plugin loading/unloading at runtime (directory scanning, enable/disable, state persistence)
+- [x] Plugin commands register into command palette (dynamic_commands integration)
+- [x] Plugin access: buffer read/write, UI panels, status bar, menus (PluginContext with 12 fields, 8 PluginAction variants)
+- [x] Plugin distribution format (directory-based with plugin.toml + scripts)
+- [x] Script-based plugins (shell commands with stdin/stdout piping)
+- [x] Plugin management UI panel (Ctrl+Shift+P → "Plugins: Manage Plugins")
+- [x] 3 built-in plugins (Word Counter, Lorem Ipsum, Timestamp)
 
 ### Additional
 - [x] 8 built-in themes (switchable via command palette)
