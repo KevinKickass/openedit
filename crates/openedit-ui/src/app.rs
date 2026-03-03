@@ -1059,6 +1059,26 @@ impl OpenEditApp {
             "view.close_compare" => {
                 self.diff_state.active = false;
             }
+            "diff.next_hunk" => {
+                if self.diff_state.active {
+                    let line_height =
+                        crate::editor_view::line_height_for_font(self.font_size);
+                    diff_view::navigate_next_hunk(&mut self.diff_state, line_height);
+                }
+            }
+            "diff.prev_hunk" => {
+                if self.diff_state.active {
+                    let line_height =
+                        crate::editor_view::line_height_for_font(self.font_size);
+                    diff_view::navigate_prev_hunk(&mut self.diff_state, line_height);
+                }
+            }
+            "hex.go_to_offset" => {
+                if self.hex_view_state.active {
+                    self.hex_view_state.go_to_offset_open = true;
+                    self.hex_view_state.go_to_offset_input.clear();
+                }
+            }
             "view.toggle_terminal" => {
                 if !self.terminal_state.visible {
                     self.terminal_state.visible = true;
@@ -1297,6 +1317,8 @@ impl eframe::App for OpenEditApp {
         let mut select_all_occurrences = false;
         let mut toggle_zen = false;
         let mut toggle_split = false;
+        let mut diff_next_hunk = false;
+        let mut diff_prev_hunk = false;
 
         ctx.input(|input| {
             let ctrl = input.modifiers.ctrl || input.modifiers.mac_cmd;
@@ -1308,6 +1330,8 @@ impl eframe::App for OpenEditApp {
                 } = event
                 {
                     match key {
+                        egui::Key::F7 if shift => diff_prev_hunk = true,
+                        egui::Key::F7 => diff_next_hunk = true,
                         egui::Key::F11 => toggle_zen = true,
                         egui::Key::Backslash if ctrl => toggle_split = true,
                         egui::Key::Q if ctrl && shift => playback_macro = true,
@@ -1515,6 +1539,17 @@ impl eframe::App for OpenEditApp {
                 self.split.direction = SplitDirection::Horizontal;
                 self.split.second_tab = self.active_tab;
             }
+        }
+        // Diff hunk navigation (F7 / Shift+F7)
+        if diff_next_hunk && self.diff_state.active {
+            let line_height =
+                crate::editor_view::line_height_for_font(self.font_size);
+            diff_view::navigate_next_hunk(&mut self.diff_state, line_height);
+        }
+        if diff_prev_hunk && self.diff_state.active {
+            let line_height =
+                crate::editor_view::line_height_for_font(self.font_size);
+            diff_view::navigate_prev_hunk(&mut self.diff_state, line_height);
         }
 
         // Build tab data
@@ -2237,7 +2272,7 @@ impl eframe::App for OpenEditApp {
                             .max_rect(editor_rect)
                             .layout(egui::Layout::top_down(egui::Align::LEFT)),
                     );
-                    diff_view::render_diff_view(
+                    let diff_action = diff_view::render_diff_view(
                         &mut editor_ui,
                         &mut self.diff_state,
                         &left_content,
@@ -2247,6 +2282,50 @@ impl eframe::App for OpenEditApp {
                         &self.theme,
                         self.font_size,
                     );
+                    // Handle merge actions from diff view
+                    match diff_action {
+                        diff_view::DiffAction::MergeLeftToRight(new_content) => {
+                            if let Some(doc) = self.documents.get_mut(right_tab) {
+                                let cursor = *doc.cursors.primary();
+                                let old_len = doc.buffer.len_chars();
+                                let old_text = doc.buffer.to_string();
+                                doc.undo_manager.record(
+                                    openedit_core::edit::EditOp::Replace {
+                                        offset: 0,
+                                        old_text,
+                                        new_text: new_content.clone(),
+                                    },
+                                    cursor,
+                                );
+                                doc.buffer.remove(0..old_len);
+                                doc.buffer.insert(0, &new_content);
+                                doc.modified = true;
+                                // Force diff recompute
+                                self.diff_state.invalidate_cache();
+                            }
+                        }
+                        diff_view::DiffAction::MergeRightToLeft(new_content) => {
+                            if let Some(doc) = self.documents.get_mut(left_tab) {
+                                let cursor = *doc.cursors.primary();
+                                let old_len = doc.buffer.len_chars();
+                                let old_text = doc.buffer.to_string();
+                                doc.undo_manager.record(
+                                    openedit_core::edit::EditOp::Replace {
+                                        offset: 0,
+                                        old_text,
+                                        new_text: new_content.clone(),
+                                    },
+                                    cursor,
+                                );
+                                doc.buffer.remove(0..old_len);
+                                doc.buffer.insert(0, &new_content);
+                                doc.modified = true;
+                                // Force diff recompute
+                                self.diff_state.invalidate_cache();
+                            }
+                        }
+                        diff_view::DiffAction::None => {}
+                    }
                 } else if self.hex_view_state.active {
                     // Hex editor view replaces the normal editor
                     let mut editor_ui = main_ui.new_child(
@@ -2254,12 +2333,43 @@ impl eframe::App for OpenEditApp {
                             .max_rect(editor_rect)
                             .layout(egui::Layout::top_down(egui::Align::LEFT)),
                     );
-                    hex_view::render_hex_view(
+                    let hex_action = hex_view::render_hex_view(
                         &mut editor_ui,
                         &mut self.hex_view_state,
                         &self.theme,
                         self.font_size,
                     );
+                    // Handle hex edit actions through the document undo system
+                    if let hex_view::HexAction::EditByte {
+                        offset,
+                        old_byte,
+                        new_byte,
+                    } = hex_action
+                    {
+                        if let Some(doc) = self.documents.get_mut(self.active_tab) {
+                            // Convert byte offset to a char-level edit in the document.
+                            // The hex view works on raw bytes, so we replace the full
+                            // document content with the updated bytes re-encoded.
+                            let cursor = *doc.cursors.primary();
+                            let old_text = doc.buffer.to_string();
+                            // Build new text from the modified hex data
+                            let new_text =
+                                String::from_utf8_lossy(&self.hex_view_state.data).to_string();
+                            let old_len = doc.buffer.len_chars();
+                            doc.undo_manager.record(
+                                openedit_core::edit::EditOp::Replace {
+                                    offset: 0,
+                                    old_text: old_text.clone(),
+                                    new_text: new_text.clone(),
+                                },
+                                cursor,
+                            );
+                            doc.buffer.remove(0..old_len);
+                            doc.buffer.insert(0, &new_text);
+                            doc.modified = true;
+                            let _ = (offset, old_byte, new_byte); // used in the HexAction
+                        }
+                    }
                 } else if split_active && !self.documents.is_empty() {
                     let ratio = self.split_ratio.clamp(0.15, 0.85);
                     // Compute the two sub-rects with draggable divider

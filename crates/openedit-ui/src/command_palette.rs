@@ -420,6 +420,11 @@ pub fn all_commands() -> Vec<Command> {
             label: "Toggle Hex Editor",
             shortcut: "",
         },
+        Command {
+            id: "hex.go_to_offset",
+            label: "Hex: Go to Offset",
+            shortcut: "Ctrl+G (in hex mode)",
+        },
         // Diff/compare
         Command {
             id: "view.compare_files",
@@ -430,6 +435,16 @@ pub fn all_commands() -> Vec<Command> {
             id: "view.close_compare",
             label: "Close Compare View",
             shortcut: "",
+        },
+        Command {
+            id: "diff.next_hunk",
+            label: "Diff: Next Change",
+            shortcut: "F7",
+        },
+        Command {
+            id: "diff.prev_hunk",
+            label: "Diff: Previous Change",
+            shortcut: "Shift+F7",
         },
         // Terminal
         Command {
