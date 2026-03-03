@@ -487,6 +487,21 @@ pub fn all_commands() -> Vec<Command> {
             label: "Playback Macro",
             shortcut: "Ctrl+Shift+Q",
         },
+        Command {
+            id: "macro.run_multiple",
+            label: "Run Macro Multiple Times...",
+            shortcut: "",
+        },
+        Command {
+            id: "macro.save_as",
+            label: "Save Macro As...",
+            shortcut: "",
+        },
+        Command {
+            id: "macro.load",
+            label: "Load Macro...",
+            shortcut: "",
+        },
         // Read-only
         Command {
             id: "edit.toggle_read_only",

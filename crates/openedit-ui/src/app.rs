@@ -143,6 +143,15 @@ pub struct OpenEditApp {
     show_about: bool,
     /// Show the keyboard shortcuts cheatsheet overlay.
     show_shortcuts: bool,
+    /// "Run Macro Multiple Times" dialog state.
+    macro_run_n_open: bool,
+    macro_run_n_input: String,
+    /// "Save Macro As" dialog state.
+    macro_save_as_open: bool,
+    macro_save_as_input: String,
+    /// "Load Macro" dialog state.
+    macro_load_open: bool,
+    macro_load_selected: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -273,7 +282,16 @@ impl OpenEditApp {
             auto_save: false,
             show_about: false,
             show_shortcuts: false,
+            macro_run_n_open: false,
+            macro_run_n_input: String::new(),
+            macro_save_as_open: false,
+            macro_save_as_input: String::new(),
+            macro_load_open: false,
+            macro_load_selected: None,
         };
+
+        // Load saved macros from disk
+        app.macro_recorder.load_macros_from_disk();
 
         // If no files specified, try to restore session; otherwise open untitled doc
         if app.pending_opens.is_empty() {
@@ -1013,6 +1031,26 @@ impl OpenEditApp {
             "macro.playback" => {
                 if !self.macro_recorder.is_recording() {
                     self.replay_macro();
+                }
+            }
+            "macro.run_multiple" => {
+                if !self.macro_recorder.is_recording()
+                    && !self.macro_recorder.last_recorded().is_empty()
+                {
+                    self.macro_run_n_open = true;
+                    self.macro_run_n_input.clear();
+                }
+            }
+            "macro.save_as" => {
+                if !self.macro_recorder.last_recorded().is_empty() {
+                    self.macro_save_as_open = true;
+                    self.macro_save_as_input.clear();
+                }
+            }
+            "macro.load" => {
+                if !self.macro_recorder.macro_names().is_empty() {
+                    self.macro_load_open = true;
+                    self.macro_load_selected = None;
                 }
             }
             "edit.column_editor" => {
@@ -2847,6 +2885,123 @@ impl eframe::App for OpenEditApp {
                     });
                 });
             self.go_to_line_open = open;
+        }
+
+        // Run Macro Multiple Times dialog
+        if self.macro_run_n_open {
+            let mut open = self.macro_run_n_open;
+            egui::Window::new("Run Macro Multiple Times")
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Count:");
+                        let response = ui.text_edit_singleline(&mut self.macro_run_n_input);
+                        if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            if let Ok(count) = self.macro_run_n_input.trim().parse::<usize>() {
+                                if count > 0 {
+                                    for _ in 0..count {
+                                        self.replay_macro();
+                                    }
+                                }
+                            }
+                            self.macro_run_n_open = false;
+                        }
+                        response.request_focus();
+                    });
+                });
+            self.macro_run_n_open = open;
+        }
+
+        // Save Macro As dialog
+        if self.macro_save_as_open {
+            let mut open = self.macro_save_as_open;
+            egui::Window::new("Save Macro As")
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Name:");
+                        let response = ui.text_edit_singleline(&mut self.macro_save_as_input);
+                        if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            let name = self.macro_save_as_input.trim().to_string();
+                            if !name.is_empty() {
+                                self.macro_recorder.save_macro(name);
+                                self.macro_recorder.save_macros_to_disk();
+                            }
+                            self.macro_save_as_open = false;
+                        }
+                        response.request_focus();
+                    });
+                });
+            self.macro_save_as_open = open;
+        }
+
+        // Load Macro dialog
+        if self.macro_load_open {
+            let mut open = self.macro_load_open;
+            let names = self.macro_recorder.macro_names();
+            egui::Window::new("Load Macro")
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .fixed_size([300.0, 200.0])
+                .show(ctx, |ui| {
+                    if names.is_empty() {
+                        ui.label("No saved macros.");
+                    } else {
+                        egui::ScrollArea::vertical()
+                            .max_height(150.0)
+                            .show(ui, |ui| {
+                                for name in &names {
+                                    let is_selected =
+                                        self.macro_load_selected.as_deref() == Some(name);
+                                    let bg = if is_selected {
+                                        egui::Color32::from_rgb(60, 60, 80)
+                                    } else {
+                                        egui::Color32::TRANSPARENT
+                                    };
+                                    let response = ui.add(
+                                        egui::Button::new(name.as_str())
+                                            .fill(bg)
+                                            .min_size(egui::vec2(ui.available_width(), 0.0)),
+                                    );
+                                    if response.clicked() {
+                                        self.macro_load_selected = Some(name.clone());
+                                    }
+                                    if response.double_clicked() {
+                                        self.macro_recorder.load_named_macro(name);
+                                        self.macro_load_open = false;
+                                    }
+                                }
+                            });
+                        ui.add_space(8.0);
+                        ui.horizontal(|ui| {
+                            if ui.button("Load").clicked() {
+                                if let Some(ref name) = self.macro_load_selected.clone() {
+                                    self.macro_recorder.load_named_macro(name);
+                                    self.macro_load_open = false;
+                                }
+                            }
+                            if ui.button("Delete").clicked() {
+                                if let Some(ref name) = self.macro_load_selected.clone() {
+                                    self.macro_recorder.delete_named_macro(name);
+                                    self.macro_recorder.save_macros_to_disk();
+                                    self.macro_load_selected = None;
+                                }
+                            }
+                            if ui.button("Cancel").clicked() {
+                                self.macro_load_open = false;
+                            }
+                        });
+                    }
+                });
+            self.macro_load_open = open;
         }
 
         // Unsaved changes dialog
