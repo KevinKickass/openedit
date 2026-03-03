@@ -598,6 +598,57 @@ pub fn all_commands() -> Vec<Command> {
             label: "Check for Updates".into(),
             shortcut: "",
         },
+        // Language / i18n
+        Command {
+            id: "settings.change_language".into(),
+            label: "Settings: Change Language".into(),
+            shortcut: "",
+        },
+        Command {
+            id: "settings.language.en".into(),
+            label: "Language: English".into(),
+            shortcut: "",
+        },
+        Command {
+            id: "settings.language.de".into(),
+            label: "Language: Deutsch".into(),
+            shortcut: "",
+        },
+        Command {
+            id: "settings.language.fr".into(),
+            label: "Language: Français".into(),
+            shortcut: "",
+        },
+        Command {
+            id: "settings.language.es".into(),
+            label: "Language: Español".into(),
+            shortcut: "",
+        },
+        Command {
+            id: "settings.language.ja".into(),
+            label: "Language: 日本語".into(),
+            shortcut: "",
+        },
+        Command {
+            id: "settings.language.zh".into(),
+            label: "Language: 中文".into(),
+            shortcut: "",
+        },
+        Command {
+            id: "settings.language.ko".into(),
+            label: "Language: 한국어".into(),
+            shortcut: "",
+        },
+        Command {
+            id: "settings.language.pt".into(),
+            label: "Language: Português".into(),
+            shortcut: "",
+        },
+        Command {
+            id: "settings.language.ru".into(),
+            label: "Language: Русский".into(),
+            shortcut: "",
+        },
         // Plugins
         Command {
             id: "plugins.manage".into(),

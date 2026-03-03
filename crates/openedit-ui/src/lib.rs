@@ -14,6 +14,7 @@ pub mod go_to_file;
 pub mod go_to_symbol;
 pub mod gutter;
 pub mod hex_view;
+pub mod i18n;
 pub mod lsp;
 pub mod macro_recorder;
 pub mod markdown_preview;

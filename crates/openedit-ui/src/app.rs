@@ -240,6 +240,12 @@ impl OpenEditApp {
 
         // Load persistent configuration
         let cfg = config::load_config();
+
+        // Restore saved locale
+        if let Some(locale) = crate::i18n::Locale::from_id(&cfg.ui.language) {
+            crate::i18n::set_locale(locale);
+        }
+
         let theme_registry = ThemeRegistry::new();
         let theme = theme_registry.get(&cfg.ui.theme);
 
@@ -1612,6 +1618,19 @@ impl OpenEditApp {
             "help.check_for_updates" => {
                 self.updater_state.check_for_updates();
             }
+            // Language / i18n
+            "settings.change_language" => {
+                self.command_palette.open = true;
+                self.command_palette.query = "Language:".to_string();
+                self.command_palette.selected = 0;
+            }
+            cmd if cmd.starts_with("settings.language.") => {
+                let locale_id = &cmd["settings.language.".len()..];
+                if let Some(locale) = crate::i18n::Locale::from_id(locale_id) {
+                    crate::i18n::set_locale(locale);
+                    self.save_config_state();
+                }
+            }
             // Route plugin commands (prefixed with "plugin.")
             cmd if cmd.starts_with("plugin.") => {
                 self.execute_plugin_command(cmd);
@@ -1869,6 +1888,7 @@ impl OpenEditApp {
                 theme: theme_name.to_string(),
                 show_minimap: self.show_minimap,
                 show_sidebar: self.sidebar_state.visible,
+                language: crate::i18n::get_locale().id().to_string(),
             },
         }
     }
@@ -2728,6 +2748,21 @@ impl eframe::App for OpenEditApp {
                             if ui.button("Import Notepad++ Theme...").clicked() {
                                 self.execute_command("theme.import_notepadpp");
                                 ui.close_menu();
+                            }
+                        });
+                        ui.menu_button(crate::i18n::t("settings.language"), |ui| {
+                            let current = crate::i18n::get_locale();
+                            for locale in crate::i18n::Locale::all() {
+                                let label = if *locale == current {
+                                    format!("\u{2713} {}", locale.display_name())
+                                } else {
+                                    format!("  {}", locale.display_name())
+                                };
+                                if ui.button(label).clicked() {
+                                    let cmd = format!("settings.language.{}", locale.id());
+                                    self.execute_command(&cmd);
+                                    ui.close_menu();
+                                }
                             }
                         });
                         if ui

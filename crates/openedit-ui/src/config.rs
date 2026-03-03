@@ -30,6 +30,9 @@ pub struct UiSection {
     pub show_minimap: bool,
     #[serde(default)]
     pub show_sidebar: bool,
+    /// Language / locale identifier (e.g. "en", "de", "fr").
+    #[serde(default = "default_language")]
+    pub language: String,
 }
 
 fn default_font_size() -> f32 {
@@ -46,6 +49,10 @@ fn default_theme() -> String {
 
 fn default_show_minimap() -> bool {
     true
+}
+
+fn default_language() -> String {
+    "en".to_string()
 }
 
 impl Default for EditorSection {
@@ -65,6 +72,7 @@ impl Default for UiSection {
             theme: default_theme(),
             show_minimap: default_show_minimap(),
             show_sidebar: false,
+            language: default_language(),
         }
     }
 }
