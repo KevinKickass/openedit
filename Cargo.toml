@@ -74,7 +74,7 @@ lsp-types = "0.97"
 portable-pty = "0.8"
 
 # Git
-git2 = "0.19"
+git2 = { version = "0.19", features = ["vendored-openssl"] }
 
 # URL handling (for LSP URIs)
 url = "2"
