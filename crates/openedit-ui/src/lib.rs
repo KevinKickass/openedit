@@ -17,6 +17,7 @@ pub mod hex_view;
 pub mod lsp;
 pub mod macro_recorder;
 pub mod markdown_preview;
+pub mod mermaid;
 pub mod minimap;
 pub mod plugin_panel;
 pub mod search_panel;

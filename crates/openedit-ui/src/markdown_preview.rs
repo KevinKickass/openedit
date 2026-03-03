@@ -1,6 +1,7 @@
-use egui::{self, Pos2, Rect, Ui, Vec2};
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use egui::{self, Color32, Pos2, Rect, Ui, Vec2};
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
+use crate::mermaid::{self, MermaidColors};
 use crate::theme::EditorTheme;
 
 /// Render a markdown preview panel for the given source text.
@@ -124,6 +125,32 @@ pub fn render_markdown_preview(
                 }
                 y += block_height + 8.0;
             }
+            MdBlock::MermaidDiagram(diagram) => {
+                let mermaid_colors = MermaidColors {
+                    node_fill: theme.current_line_bg,
+                    node_stroke: theme.syntax_colors.keyword,
+                    node_text: theme.foreground,
+                    edge_color: theme.gutter_fg,
+                    label_color: theme.foreground,
+                    background: Color32::from_rgba_premultiplied(
+                        theme.current_line_bg.r(),
+                        theme.current_line_bg.g(),
+                        theme.current_line_bg.b(),
+                        200,
+                    ),
+                    participant_fill: theme.tab_active_bg,
+                    arrow_color: theme.syntax_colors.function,
+                };
+
+                let height = mermaid::render_mermaid(
+                    ui.painter(),
+                    diagram,
+                    Pos2::new(rect.left() + padding, y),
+                    content_width,
+                    &mermaid_colors,
+                );
+                y += height + 8.0;
+            }
             MdBlock::ListItem(text, ordered, index) => {
                 let font = egui::FontId::proportional(14.0);
                 let bullet = if *ordered {
@@ -197,7 +224,8 @@ enum MdBlock {
     Heading(usize, String), // level, text
     Paragraph(String),
     CodeBlock(String),
-    ListItem(String, bool, usize), // text, is_ordered, index
+    MermaidDiagram(mermaid::MermaidDiagram), // parsed mermaid diagram
+    ListItem(String, bool, usize),           // text, is_ordered, index
     HorizontalRule,
     BlockQuote(String),
 }
@@ -207,6 +235,7 @@ fn parse_to_blocks(parser: Parser) -> Vec<MdBlock> {
     let mut current_text = String::new();
     let mut in_heading: Option<usize> = None;
     let mut _in_code_block = false;
+    let mut in_mermaid_block = false;
     let mut in_list_item = false;
     let mut is_ordered_list = false;
     let mut list_index: usize = 0;
@@ -249,13 +278,20 @@ fn parse_to_blocks(parser: Parser) -> Vec<MdBlock> {
                 }
                 current_text.clear();
             }
-            Event::Start(Tag::CodeBlock(_)) => {
+            Event::Start(Tag::CodeBlock(kind)) => {
                 _in_code_block = true;
+                in_mermaid_block = matches!(&kind, CodeBlockKind::Fenced(lang) if lang.as_ref().trim().eq_ignore_ascii_case("mermaid"));
                 current_text.clear();
             }
             Event::End(TagEnd::CodeBlock) => {
                 _in_code_block = false;
-                blocks.push(MdBlock::CodeBlock(current_text.clone()));
+                if in_mermaid_block {
+                    let diagram = mermaid::parse_mermaid(&current_text);
+                    blocks.push(MdBlock::MermaidDiagram(diagram));
+                    in_mermaid_block = false;
+                } else {
+                    blocks.push(MdBlock::CodeBlock(current_text.clone()));
+                }
                 current_text.clear();
             }
             Event::Start(Tag::List(start)) => {
