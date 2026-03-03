@@ -1062,13 +1062,32 @@ impl OpenEditApp {
             "view.toggle_terminal" => {
                 if !self.terminal_state.visible {
                     self.terminal_state.visible = true;
-                    if !self.terminal_state.running {
+                    if !self.terminal_state.running() {
                         self.terminal_state.start();
                     }
                     self.terminal_focused = true;
                 } else {
                     self.terminal_state.visible = false;
                     self.terminal_focused = false;
+                }
+            }
+            "terminal.new" => {
+                self.terminal_state.visible = true;
+                self.terminal_state.start();
+                self.terminal_focused = true;
+            }
+            "terminal.send_selection" => {
+                if let Some(doc) = self.documents.get(self.active_tab) {
+                    let text = doc.selected_text();
+                    if !text.is_empty() {
+                        if !self.terminal_state.visible {
+                            self.terminal_state.visible = true;
+                        }
+                        if !self.terminal_state.running() {
+                            self.terminal_state.start();
+                        }
+                        self.terminal_state.send_text_to_active(&text);
+                    }
                 }
             }
             "view.toggle_bracket_colors" => {
@@ -1488,7 +1507,7 @@ impl eframe::App for OpenEditApp {
         if toggle_terminal {
             if !self.terminal_state.visible {
                 self.terminal_state.visible = true;
-                if !self.terminal_state.running {
+                if !self.terminal_state.running() {
                     self.terminal_state.start();
                 }
                 self.terminal_focused = true;
@@ -1744,13 +1763,11 @@ impl eframe::App for OpenEditApp {
                     // ── Terminal ──
                     ui.menu_button("Terminal", |ui| {
                         if ui.button("New Terminal").clicked() {
-                            self.terminal_state.visible = true;
-                            self.terminal_state.start();
-                            self.terminal_focused = true;
+                            self.execute_command("terminal.new");
                             ui.close_menu();
                         }
-                        if ui.button("Split Terminal").clicked() {
-                            log::info!("Split Terminal: not yet implemented");
+                        if ui.button("Send Selection to Terminal").clicked() {
+                            self.execute_command("terminal.send_selection");
                             ui.close_menu();
                         }
                     });

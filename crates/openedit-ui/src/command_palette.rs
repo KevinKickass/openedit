@@ -437,6 +437,16 @@ pub fn all_commands() -> Vec<Command> {
             label: "Toggle Terminal",
             shortcut: "Ctrl+`",
         },
+        Command {
+            id: "terminal.new",
+            label: "Terminal: New Terminal",
+            shortcut: "",
+        },
+        Command {
+            id: "terminal.send_selection",
+            label: "Terminal: Send Selection",
+            shortcut: "",
+        },
         // Git
         Command {
             id: "view.toggle_git_blame",
