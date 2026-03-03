@@ -42,6 +42,16 @@ pub fn all_commands() -> Vec<Command> {
             label: "Open Recent File".into(),
             shortcut: "",
         },
+        Command {
+            id: "file.print".into(),
+            label: "File: Print".into(),
+            shortcut: "",
+        },
+        Command {
+            id: "file.export_pdf".into(),
+            label: "File: Export to PDF".into(),
+            shortcut: "",
+        },
         // Edit operations
         Command {
             id: "edit.undo".into(),

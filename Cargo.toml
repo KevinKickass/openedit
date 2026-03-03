@@ -56,6 +56,9 @@ pulldown-cmark = "0.12"
 # XML parsing
 quick-xml = "0.38"
 
+# PDF generation
+printpdf = "0.8"
+
 # Error handling
 anyhow = "1"
 thiserror = "2"

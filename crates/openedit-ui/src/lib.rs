@@ -21,6 +21,7 @@ pub mod markdown_preview;
 pub mod mermaid;
 pub mod minimap;
 pub mod plugin_panel;
+pub mod print;
 pub mod search_panel;
 pub mod sidebar;
 pub mod snippets;
