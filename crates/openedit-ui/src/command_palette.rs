@@ -582,6 +582,57 @@ pub fn all_commands() -> Vec<Command> {
             label: "Theme: Reload User Themes".into(),
             shortcut: "",
         },
+        // Language / i18n
+        Command {
+            id: "settings.change_language".into(),
+            label: "Settings: Change Language".into(),
+            shortcut: "",
+        },
+        Command {
+            id: "settings.language.en".into(),
+            label: "Language: English".into(),
+            shortcut: "",
+        },
+        Command {
+            id: "settings.language.de".into(),
+            label: "Language: Deutsch".into(),
+            shortcut: "",
+        },
+        Command {
+            id: "settings.language.fr".into(),
+            label: "Language: Fran\u{00E7}ais".into(),
+            shortcut: "",
+        },
+        Command {
+            id: "settings.language.es".into(),
+            label: "Language: Espa\u{00F1}ol".into(),
+            shortcut: "",
+        },
+        Command {
+            id: "settings.language.ja".into(),
+            label: "Language: \u{65E5}\u{672C}\u{8A9E}".into(),
+            shortcut: "",
+        },
+        Command {
+            id: "settings.language.zh".into(),
+            label: "Language: \u{4E2D}\u{6587}".into(),
+            shortcut: "",
+        },
+        Command {
+            id: "settings.language.ko".into(),
+            label: "Language: \u{D55C}\u{AD6D}\u{C5B4}".into(),
+            shortcut: "",
+        },
+        Command {
+            id: "settings.language.pt".into(),
+            label: "Language: Portugu\u{00EA}s".into(),
+            shortcut: "",
+        },
+        Command {
+            id: "settings.language.ru".into(),
+            label: "Language: \u{0420}\u{0443}\u{0441}\u{0441}\u{043A}\u{0438}\u{0439}".into(),
+            shortcut: "",
+        },
         // Plugins
         Command {
             id: "plugins.manage".into(),
