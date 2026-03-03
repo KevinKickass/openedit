@@ -11,17 +11,18 @@ use crate::go_to_file::{self, GoToFileState};
 use crate::go_to_symbol::{self, GoToSymbolState};
 use crate::hex_view::{self, HexViewState};
 use crate::lsp::LspManager;
-use crate::macro_recorder::{MacroAction, MacroRecorder};
+use crate::macro_recorder::{actions_from_script, actions_to_script, MacroAction, MacroRecorder};
 use crate::search_panel::{self, SearchPanelState};
 use crate::sidebar::{self, SidebarState};
 use crate::snippets::SnippetEngine;
 use crate::status_bar;
 use crate::tab_bar;
 use crate::terminal::TerminalState;
-use crate::theme::EditorTheme;
+use crate::theme::{EditorTheme, ThemeRegistry};
 use crate::vim::VimState;
 use eframe::egui;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use openedit_core::document::DocId;
 use openedit_core::syntax::SyntaxEngine;
 use openedit_core::{Buffer, Document, Encoding};
 use std::collections::HashSet;
@@ -34,6 +35,8 @@ pub struct OpenEditApp {
     documents: Vec<Document>,
     active_tab: usize,
     theme: EditorTheme,
+    /// Registry of all available themes (built-in + user TOML themes).
+    theme_registry: ThemeRegistry,
     search_state: SearchPanelState,
     editor_view_state: EditorViewState,
     syntax_engine: SyntaxEngine,
@@ -158,6 +161,8 @@ pub struct OpenEditApp {
     /// "Load Macro" dialog state.
     macro_load_open: bool,
     macro_load_selected: Option<String>,
+    /// DocId of the macro script editor tab (if open).
+    macro_script_doc_id: Option<DocId>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -216,7 +221,8 @@ impl OpenEditApp {
 
         // Load persistent configuration
         let cfg = config::load_config();
-        let theme = EditorTheme::by_name(&cfg.ui.theme);
+        let theme_registry = ThemeRegistry::new();
+        let theme = theme_registry.get(&cfg.ui.theme);
 
         let mut sidebar_state = SidebarState::default();
         sidebar_state.visible = cfg.ui.show_sidebar;
@@ -225,6 +231,7 @@ impl OpenEditApp {
             documents: Vec::new(),
             active_tab: 0,
             theme,
+            theme_registry,
             search_state: SearchPanelState::default(),
             editor_view_state: EditorViewState::default(),
             syntax_engine: SyntaxEngine::new(),
@@ -298,10 +305,14 @@ impl OpenEditApp {
             macro_save_as_input: String::new(),
             macro_load_open: false,
             macro_load_selected: None,
+            macro_script_doc_id: None,
         };
 
         // Load saved macros from disk
         app.macro_recorder.load_macros_from_disk();
+
+        // Populate dynamic theme commands from user theme files
+        app.update_dynamic_theme_commands();
 
         // If no files specified, try to restore session; otherwise open untitled doc
         if app.pending_opens.is_empty() {
@@ -520,6 +531,18 @@ impl OpenEditApp {
     }
 
     fn save_current(&mut self) {
+        // If the active tab is the macro script editor, parse the script back
+        // into actions and store in the macro recorder instead of saving to disk.
+        if self.is_macro_script_tab(self.active_tab) {
+            if let Some(doc) = self.documents.get_mut(self.active_tab) {
+                let text = doc.buffer.to_string();
+                let actions = actions_from_script(&text);
+                doc.modified = false;
+                self.macro_recorder.actions = actions;
+            }
+            return;
+        }
+
         let Some(doc) = self.documents.get_mut(self.active_tab) else {
             return;
         };
@@ -596,6 +619,38 @@ impl OpenEditApp {
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
     }
+    /// Open the last recorded macro as an editable script in a new tab.
+    fn open_macro_script_tab(&mut self) {
+        // If we already have a macro script tab open, switch to it
+        if let Some(doc_id) = self.macro_script_doc_id {
+            if let Some(idx) = self.documents.iter().position(|d| d.id == doc_id) {
+                self.active_tab = idx;
+                return;
+            }
+            // Tab was closed, clear the stale ID
+            self.macro_script_doc_id = None;
+        }
+
+        let script = actions_to_script(self.macro_recorder.last_recorded());
+        let mut doc = Document::from_str(&script);
+        doc.language = None;
+        doc.modified = false;
+        let doc_id = doc.id;
+        self.documents.push(doc);
+        self.active_tab = self.documents.len() - 1;
+        self.macro_script_doc_id = Some(doc_id);
+    }
+
+    /// Check if the document at the given index is the macro script editor tab.
+    fn is_macro_script_tab(&self, idx: usize) -> bool {
+        if let Some(doc_id) = self.macro_script_doc_id {
+            if let Some(doc) = self.documents.get(idx) {
+                return doc.id == doc_id;
+            }
+        }
+        false
+    }
+
 
     /// Replay the last recorded macro on the active document.
     fn replay_macro(&mut self) {
@@ -1012,14 +1067,14 @@ impl OpenEditApp {
                 self.save_config_state();
             }
             "view.toggle_theme" => {
-                // Cycle through themes
-                let names = EditorTheme::all_names();
+                // Cycle through all themes (built-in + user)
+                let names = self.theme_registry.all_names();
                 let current_idx = names
                     .iter()
-                    .position(|n| *n == self.theme.name)
+                    .position(|n| n == &self.theme.name)
                     .unwrap_or(0);
                 let next_idx = (current_idx + 1) % names.len();
-                self.theme = EditorTheme::by_name(names[next_idx]);
+                self.theme = self.theme_registry.get(&names[next_idx]);
                 self.save_config_state();
             }
             "view.zen_mode" | "view.toggle_zen" => {
@@ -1034,9 +1089,33 @@ impl OpenEditApp {
                     self.vim_state.mode = crate::vim::VimMode::Normal;
                 }
             }
+            // Theme management commands
+            "theme.open_folder" => {
+                ThemeRegistry::open_themes_folder();
+            }
+            "theme.create_from_current" => {
+                match ThemeRegistry::export_theme(&self.theme) {
+                    Ok(path) => {
+                        log::info!("Theme exported to {}", path.display());
+                        // Reload so the exported theme appears in the registry
+                        self.theme_registry.reload();
+                        self.update_dynamic_theme_commands();
+                    }
+                    Err(e) => {
+                        log::error!("Failed to export theme: {}", e);
+                    }
+                }
+            }
+            "theme.reload" => {
+                self.theme_registry.reload();
+                self.update_dynamic_theme_commands();
+                // Re-apply current theme in case it was updated on disk
+                let current_name = self.theme.name.clone();
+                self.theme = self.theme_registry.get(&current_name);
+            }
             cmd if cmd.starts_with("view.theme.") => {
                 let theme_key = &cmd["view.theme.".len()..];
-                self.theme = EditorTheme::by_name(theme_key);
+                self.theme = self.theme_registry.get(theme_key);
                 self.save_config_state();
             }
             "view.split_horizontal" => {
@@ -1108,6 +1187,11 @@ impl OpenEditApp {
                 if !self.macro_recorder.macro_names().is_empty() {
                     self.macro_load_open = true;
                     self.macro_load_selected = None;
+                }
+            }
+            "macro.edit_last" => {
+                if !self.macro_recorder.last_recorded().is_empty() {
+                    self.open_macro_script_tab();
                 }
             }
             "edit.column_editor" => {
@@ -1262,6 +1346,12 @@ impl OpenEditApp {
                     self.refresh_function_list_symbols();
                 }
             }
+            "snippets.open_user_file" => {
+                // Ensure the user snippets file exists (create with examples if needed)
+                if let Some(path) = crate::snippets::ensure_user_snippets_file() {
+                    self.open_file(path);
+                }
+            }
             _ => {}
         }
     }
@@ -1285,6 +1375,10 @@ impl OpenEditApp {
         if idx >= self.documents.len() {
             return;
         }
+        // Clear macro script tracking if closing that tab
+        if self.is_macro_script_tab(idx) {
+            self.macro_script_doc_id = None;
+        }
         self.documents.remove(idx);
 
         if self.documents.is_empty() {
@@ -1295,6 +1389,26 @@ impl OpenEditApp {
         }
 
         self.save_session();
+    }
+
+    /// Update the command palette's dynamic commands with user-defined theme entries.
+    fn update_dynamic_theme_commands(&mut self) {
+        self.command_palette.dynamic_commands.clear();
+        for name in self.theme_registry.all_names() {
+            if self.theme_registry.is_user_theme(&name) {
+                let config_key = name
+                    .to_lowercase()
+                    .replace(' ', "_")
+                    .replace(|c: char| !c.is_alphanumeric() && c != '_', "");
+                self.command_palette.dynamic_commands.push(
+                    command_palette::Command {
+                        id: format!("view.theme.{}", config_key),
+                        label: format!("Theme: {} (custom)", name),
+                        shortcut: "",
+                    },
+                );
+            }
+        }
     }
 
     /// Build an `EditorConfig` from the current app state.
@@ -1804,12 +1918,18 @@ impl eframe::App for OpenEditApp {
         }
 
         // Build tab data
+        let macro_script_id = self.macro_script_doc_id;
         let tabs: Vec<(String, bool, Option<String>)> = self
             .documents
             .iter()
             .map(|d| {
+                let name = if macro_script_id == Some(d.id) {
+                    "[Macro Script]".to_string()
+                } else {
+                    d.display_name()
+                };
                 (
-                    d.display_name(),
+                    name,
                     d.modified,
                     d.path.as_ref().map(|p| p.display().to_string()),
                 )
@@ -2057,17 +2177,38 @@ impl eframe::App for OpenEditApp {
                     // ── Settings ──
                     ui.menu_button("Settings", |ui| {
                         ui.menu_button("Theme", |ui| {
-                            for name in EditorTheme::all_names() {
+                            let theme_names = self.theme_registry.all_names();
+                            for name in &theme_names {
+                                let is_user = self.theme_registry.is_user_theme(name);
                                 let label = if self.theme.name == *name {
-                                    format!("✓ {}", name)
+                                    if is_user {
+                                        format!("✓ {} (custom)", name)
+                                    } else {
+                                        format!("✓ {}", name)
+                                    }
+                                } else if is_user {
+                                    format!("  {} (custom)", name)
                                 } else {
                                     format!("  {}", name)
                                 };
                                 if ui.button(label).clicked() {
-                                    self.theme = EditorTheme::by_name(name);
+                                    self.theme = self.theme_registry.get(name);
                                     self.save_config_state();
                                     ui.close_menu();
                                 }
+                            }
+                            ui.separator();
+                            if ui.button("Open Themes Folder...").clicked() {
+                                self.execute_command("theme.open_folder");
+                                ui.close_menu();
+                            }
+                            if ui.button("Create Theme from Current...").clicked() {
+                                self.execute_command("theme.create_from_current");
+                                ui.close_menu();
+                            }
+                            if ui.button("Reload Themes").clicked() {
+                                self.execute_command("theme.reload");
+                                ui.close_menu();
                             }
                         });
                         if ui
@@ -2218,7 +2359,7 @@ impl eframe::App for OpenEditApp {
                         if let Some(cmd_id) =
                             command_palette::render_command_palette(ctx, &mut self.command_palette)
                         {
-                            self.execute_command(cmd_id);
+                            self.execute_command(&cmd_id);
                         }
                     }
 
@@ -3174,7 +3315,7 @@ impl eframe::App for OpenEditApp {
             if let Some(cmd_id) =
                 command_palette::render_command_palette(ctx, &mut self.command_palette)
             {
-                self.execute_command(cmd_id);
+                self.execute_command(&cmd_id);
             }
         }
 

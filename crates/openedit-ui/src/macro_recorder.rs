@@ -24,6 +24,131 @@ pub enum MacroAction {
     },
 }
 
+impl MacroAction {
+    /// Convert a single macro action to a human-readable script line.
+    pub fn to_script_line(&self) -> String {
+        match self {
+            MacroAction::InsertText(text) => {
+                format!(
+                    "type \"{}\"",
+                    text.replace('\\', "\\\\").replace('"', "\\\"")
+                )
+            }
+            MacroAction::Paste(text) => {
+                format!(
+                    "paste \"{}\"",
+                    text.replace('\\', "\\\\")
+                        .replace('"', "\\\"")
+                        .replace('\n', "\\n")
+                )
+            }
+            MacroAction::KeyAction {
+                key,
+                ctrl,
+                shift,
+                alt,
+            } => {
+                let mut parts = Vec::new();
+                if *ctrl {
+                    parts.push("ctrl");
+                }
+                if *shift {
+                    parts.push("shift");
+                }
+                if *alt {
+                    parts.push("alt");
+                }
+                parts.push(key);
+                format!("key {}", parts.join("+"))
+            }
+        }
+    }
+
+    /// Parse a single script line into a MacroAction, returning None on invalid input.
+    pub fn from_script_line(line: &str) -> Option<MacroAction> {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            return None;
+        }
+        if let Some(rest) = line.strip_prefix("type ") {
+            let text = parse_quoted_string(rest)?;
+            Some(MacroAction::InsertText(text))
+        } else if let Some(rest) = line.strip_prefix("paste ") {
+            let text = parse_quoted_string(rest)?;
+            Some(MacroAction::Paste(text))
+        } else if let Some(rest) = line.strip_prefix("key ") {
+            let rest = rest.trim();
+            let mut ctrl = false;
+            let mut shift = false;
+            let mut alt = false;
+            let parts: Vec<&str> = rest.split('+').collect();
+            let key = parts.last()?.to_string();
+            for &part in &parts[..parts.len() - 1] {
+                match part {
+                    "ctrl" => ctrl = true,
+                    "shift" => shift = true,
+                    "alt" => alt = true,
+                    _ => {}
+                }
+            }
+            Some(MacroAction::KeyAction {
+                key,
+                ctrl,
+                shift,
+                alt,
+            })
+        } else {
+            None
+        }
+    }
+}
+
+/// Parse a double-quoted string with backslash escapes (\\, \", \n).
+fn parse_quoted_string(s: &str) -> Option<String> {
+    let s = s.trim();
+    if !s.starts_with('"') || !s.ends_with('"') || s.len() < 2 {
+        return None;
+    }
+    let inner = &s[1..s.len() - 1];
+    let mut result = String::new();
+    let mut chars = inner.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            match chars.next() {
+                Some('\\') => result.push('\\'),
+                Some('"') => result.push('"'),
+                Some('n') => result.push('\n'),
+                Some(other) => {
+                    result.push('\\');
+                    result.push(other);
+                }
+                None => result.push('\\'),
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+    Some(result)
+}
+
+/// Convert a list of macro actions to a multi-line script string.
+pub fn actions_to_script(actions: &[MacroAction]) -> String {
+    actions
+        .iter()
+        .map(|a| a.to_script_line())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Parse a multi-line script string into a list of macro actions.
+/// Blank lines and lines starting with '#' are skipped.
+pub fn actions_from_script(script: &str) -> Vec<MacroAction> {
+    script
+        .lines()
+        .filter_map(MacroAction::from_script_line)
+        .collect()
+}
+
 /// Records and stores macros for later playback.
 pub struct MacroRecorder {
     /// Whether currently recording user actions.
@@ -409,5 +534,115 @@ mod tests {
         // Cleanup
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_dir(&tmp);
+    }
+
+    #[test]
+    fn test_script_roundtrip() {
+        let actions = vec![
+            MacroAction::InsertText("hello world".to_string()),
+            MacroAction::Paste("line1\nline2".to_string()),
+            MacroAction::KeyAction {
+                key: "Enter".to_string(),
+                ctrl: false,
+                shift: false,
+                alt: false,
+            },
+            MacroAction::KeyAction {
+                key: "S".to_string(),
+                ctrl: true,
+                shift: false,
+                alt: false,
+            },
+            MacroAction::KeyAction {
+                key: "K".to_string(),
+                ctrl: true,
+                shift: true,
+                alt: false,
+            },
+            MacroAction::InsertText("has \"quotes\" and \\backslash".to_string()),
+        ];
+
+        let script = actions_to_script(&actions);
+        let parsed = actions_from_script(&script);
+
+        assert_eq!(parsed.len(), actions.len());
+
+        // Verify round-trip by converting back to script
+        let script2 = actions_to_script(&parsed);
+        assert_eq!(script, script2);
+    }
+
+    #[test]
+    fn test_script_line_type() {
+        let action = MacroAction::InsertText("hello".to_string());
+        assert_eq!(action.to_script_line(), "type \"hello\"");
+        let parsed = MacroAction::from_script_line("type \"hello\"").unwrap();
+        match parsed {
+            MacroAction::InsertText(t) => assert_eq!(t, "hello"),
+            _ => panic!("Expected InsertText"),
+        }
+    }
+
+    #[test]
+    fn test_script_line_paste() {
+        let action = MacroAction::Paste("clip".to_string());
+        assert_eq!(action.to_script_line(), "paste \"clip\"");
+        let parsed = MacroAction::from_script_line("paste \"clip\"").unwrap();
+        match parsed {
+            MacroAction::Paste(t) => assert_eq!(t, "clip"),
+            _ => panic!("Expected Paste"),
+        }
+    }
+
+    #[test]
+    fn test_script_line_key_simple() {
+        let action = MacroAction::KeyAction {
+            key: "Enter".to_string(),
+            ctrl: false,
+            shift: false,
+            alt: false,
+        };
+        assert_eq!(action.to_script_line(), "key Enter");
+    }
+
+    #[test]
+    fn test_script_line_key_modifiers() {
+        let action = MacroAction::KeyAction {
+            key: "S".to_string(),
+            ctrl: true,
+            shift: true,
+            alt: false,
+        };
+        assert_eq!(action.to_script_line(), "key ctrl+shift+S");
+
+        let parsed = MacroAction::from_script_line("key ctrl+shift+S").unwrap();
+        match parsed {
+            MacroAction::KeyAction {
+                key,
+                ctrl,
+                shift,
+                alt,
+            } => {
+                assert_eq!(key, "S");
+                assert!(ctrl);
+                assert!(shift);
+                assert!(!alt);
+            }
+            _ => panic!("Expected KeyAction"),
+        }
+    }
+
+    #[test]
+    fn test_script_blank_and_comment_lines_skipped() {
+        let script = "type \"a\"\n\n# comment\nkey Enter\n";
+        let parsed = actions_from_script(script);
+        assert_eq!(parsed.len(), 2);
+    }
+
+    #[test]
+    fn test_script_invalid_lines_skipped() {
+        let script = "type \"a\"\ninvalid line\nkey Enter\n";
+        let parsed = actions_from_script(script);
+        assert_eq!(parsed.len(), 2);
     }
 }
