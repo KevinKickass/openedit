@@ -230,11 +230,12 @@
 - [x] Bracket colorization (rainbow brackets)
 - [x] Toggle comment (Ctrl+/)
 - [x] Theming engine (TOML theme files in ~/.config/openedit/themes/, base inheritance)
-- [ ] Theme import from VS Code / Notepad++ themes
-- [ ] Auto-update mechanism
-- [ ] Localization (i18n)
-- [ ] Print support
-- [ ] Installer packaging (MSI, DMG, AppImage, Flatpak, deb, rpm)
+- [x] Theme import from VS Code / Notepad++ themes (JSON/JSONC + XML parsing, auto-convert to TOML)
+- [x] Auto-update mechanism (GitHub Releases API, background check, binary download/replace)
+- [x] Localization (i18n) — EN/DE/FR/ES complete, JA partial, 9 locales supported
+- [x] Print support (PDF export via printpdf, line numbers, syntax highlighting, A4/Letter)
+- [x] Installer packaging (GitHub Actions: MSI, DMG, AppImage, deb, rpm, Flatpak)
+- [x] Mermaid diagram rendering in markdown preview (flowchart + sequence diagrams)
 
 ---
 
