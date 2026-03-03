@@ -1,9 +1,10 @@
 use openedit_core::cursor::Position;
 use openedit_core::Document;
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 /// A single snippet definition.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snippet {
     /// Tab trigger prefix (e.g., "fn", "for", "if").
     pub trigger: String,
@@ -54,6 +55,33 @@ impl Default for SnippetState {
 }
 
 impl SnippetState {
+    /// Returns positions and lengths of all placeholders for visual highlighting.
+    /// Each entry is (Position, length, is_current).
+    /// `is_current` is true for the placeholder that was most recently navigated to
+    /// (i.e., current_index - 1, since current_index is incremented after navigation).
+    pub fn placeholder_positions(&self) -> Vec<(Position, usize, bool)> {
+        if !self.active {
+            return Vec::new();
+        }
+        // The current placeholder being edited is current_index - 1
+        // (since next_placeholder increments it after returning).
+        let active_idx = self.current_index.saturating_sub(1);
+        self.placeholders
+            .iter()
+            .filter(|ph| ph.index != 0) // Don't highlight $0 (final position)
+            .map(|ph| {
+                let line = self.insert_position.line + ph.line_offset;
+                let col = if ph.line_offset == 0 {
+                    self.insert_position.col + ph.col_offset
+                } else {
+                    ph.col_offset
+                };
+                let is_current = ph.index == active_idx;
+                (Position::new(line, col), ph.length, is_current)
+            })
+            .collect()
+    }
+
     /// Advance to the next placeholder. Returns the target position, or None if done.
     pub fn next_placeholder(&mut self) -> Option<(Position, usize)> {
         if !self.active {
@@ -455,6 +483,127 @@ pub fn find_matching_snippets(trigger: &str, language: &str) -> Vec<Snippet> {
         .collect()
 }
 
+/// Returns the path to the user snippets JSON file in the platform config directory.
+pub fn user_snippets_path() -> Option<PathBuf> {
+    let config_dir = if cfg!(target_os = "windows") {
+        std::env::var("APPDATA").ok().map(PathBuf::from)
+    } else if cfg!(target_os = "macos") {
+        std::env::var("HOME")
+            .ok()
+            .map(|h| PathBuf::from(h).join("Library").join("Application Support"))
+    } else {
+        // Linux and other Unix
+        std::env::var("XDG_CONFIG_HOME")
+            .ok()
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var("HOME")
+                    .ok()
+                    .map(|h| PathBuf::from(h).join(".config"))
+            })
+    };
+    config_dir.map(|d| d.join("openedit").join("snippets.json"))
+}
+
+/// Load user-defined snippets from the JSON file.
+/// Returns an empty Vec if the file does not exist or cannot be parsed.
+pub fn load_user_snippets() -> Vec<Snippet> {
+    let Some(path) = user_snippets_path() else {
+        return Vec::new();
+    };
+    match std::fs::read_to_string(&path) {
+        Ok(content) => match serde_json::from_str::<Vec<Snippet>>(&content) {
+            Ok(snippets) => {
+                log::info!(
+                    "Loaded {} user snippets from {}",
+                    snippets.len(),
+                    path.display()
+                );
+                snippets
+            }
+            Err(e) => {
+                log::warn!(
+                    "Failed to parse user snippets at {}: {}",
+                    path.display(),
+                    e
+                );
+                Vec::new()
+            }
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => {
+            log::warn!(
+                "Failed to read user snippets at {}: {}",
+                path.display(),
+                e
+            );
+            Vec::new()
+        }
+    }
+}
+
+/// Ensure the user snippets file exists, creating it with example content if needed.
+/// Returns the path to the file.
+pub fn ensure_user_snippets_file() -> Option<PathBuf> {
+    let path = user_snippets_path()?;
+    if !path.exists() {
+        if let Some(parent) = path.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                log::error!(
+                    "Failed to create config directory {}: {}",
+                    parent.display(),
+                    e
+                );
+                return Some(path);
+            }
+        }
+        let example_snippets = vec![
+            Snippet {
+                trigger: "todo".into(),
+                label: "TODO comment".into(),
+                body: "// TODO: ${1:description}$0".into(),
+                language: "Rust".into(),
+            },
+            Snippet {
+                trigger: "dbg".into(),
+                label: "Debug print".into(),
+                body: "println!(\"DEBUG: {} = {:?}\", stringify!(${1:var}), ${1:var});$0".into(),
+                language: "Rust".into(),
+            },
+        ];
+        match serde_json::to_string_pretty(&example_snippets) {
+            Ok(content) => {
+                if let Err(e) = std::fs::write(&path, content) {
+                    log::error!(
+                        "Failed to write example snippets to {}: {}",
+                        path.display(),
+                        e
+                    );
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to serialize example snippets: {}", e);
+            }
+        }
+    }
+    Some(path)
+}
+
+/// Merge built-in and user snippets. User snippets with the same trigger+language
+/// take precedence over built-in ones.
+fn merge_snippets(builtin: Vec<Snippet>, user: Vec<Snippet>) -> Vec<Snippet> {
+    let mut result = builtin;
+    for user_snippet in user {
+        // Remove any built-in snippet with the same trigger+language (case insensitive)
+        result.retain(|s| {
+            !(s.trigger == user_snippet.trigger
+                && s.language.eq_ignore_ascii_case(&user_snippet.language))
+        });
+        result.push(user_snippet);
+    }
+    result
+}
+
 /// Snippet engine that manages snippet lookup and expansion.
 pub struct SnippetEngine {
     snippets: Vec<Snippet>,
@@ -463,10 +612,19 @@ pub struct SnippetEngine {
 
 impl SnippetEngine {
     pub fn new() -> Self {
+        let builtin = builtin_snippets();
+        let user = load_user_snippets();
         Self {
-            snippets: builtin_snippets(),
+            snippets: merge_snippets(builtin, user),
             state: SnippetState::default(),
         }
+    }
+
+    /// Reload user snippets from disk and re-merge with built-in snippets.
+    pub fn reload_user_snippets(&mut self) {
+        let builtin = builtin_snippets();
+        let user = load_user_snippets();
+        self.snippets = merge_snippets(builtin, user);
     }
 
     /// Try to expand a snippet at the current cursor position.
@@ -692,5 +850,165 @@ mod tests {
         let final_pos = state.next_placeholder();
         assert!(final_pos.is_some());
         assert!(!state.active); // Should deactivate after $0
+    }
+
+    #[test]
+    fn test_placeholder_positions_inactive() {
+        let state = SnippetState::default();
+        let positions = state.placeholder_positions();
+        assert!(positions.is_empty());
+    }
+
+    #[test]
+    fn test_placeholder_positions_active() {
+        let state = SnippetState {
+            active: true,
+            placeholders: vec![
+                SnippetPlaceholder {
+                    index: 1,
+                    default_text: "name".into(),
+                    line_offset: 0,
+                    col_offset: 3,
+                    length: 4,
+                },
+                SnippetPlaceholder {
+                    index: 2,
+                    default_text: "params".into(),
+                    line_offset: 0,
+                    col_offset: 8,
+                    length: 6,
+                },
+                SnippetPlaceholder {
+                    index: 0,
+                    default_text: String::new(),
+                    line_offset: 1,
+                    col_offset: 4,
+                    length: 0,
+                },
+            ],
+            current_index: 2, // After navigating to placeholder 1, current_index becomes 2
+            insert_position: Position::new(5, 10),
+        };
+
+        let positions = state.placeholder_positions();
+        // Should have 2 entries (indices 1 and 2; $0 is filtered out)
+        assert_eq!(positions.len(), 2);
+
+        // First placeholder (index 1) should be current (active_idx = 2-1 = 1)
+        let (pos1, len1, is_current1) = &positions[0];
+        assert_eq!(*pos1, Position::new(5, 13)); // line 5, col 10+3
+        assert_eq!(*len1, 4);
+        assert!(is_current1);
+
+        // Second placeholder (index 2) should not be current
+        let (pos2, len2, is_current2) = &positions[1];
+        assert_eq!(*pos2, Position::new(5, 18)); // line 5, col 10+8
+        assert_eq!(*len2, 6);
+        assert!(!is_current2);
+    }
+
+    #[test]
+    fn test_placeholder_positions_multiline() {
+        let state = SnippetState {
+            active: true,
+            placeholders: vec![
+                SnippetPlaceholder {
+                    index: 1,
+                    default_text: "body".into(),
+                    line_offset: 1,
+                    col_offset: 4,
+                    length: 4,
+                },
+            ],
+            current_index: 2, // After navigating past placeholder 1
+            insert_position: Position::new(0, 0),
+        };
+
+        let positions = state.placeholder_positions();
+        assert_eq!(positions.len(), 1);
+        let (pos, len, is_current) = &positions[0];
+        // line_offset=1 means second line, col_offset=4 (not added to insert col)
+        assert_eq!(*pos, Position::new(1, 4));
+        assert_eq!(*len, 4);
+        assert!(is_current);
+    }
+
+    #[test]
+    fn test_merge_snippets_user_override() {
+        let builtin = vec![
+            Snippet {
+                trigger: "fn".into(),
+                label: "Built-in function".into(),
+                body: "fn $1() {}".into(),
+                language: "Rust".into(),
+            },
+            Snippet {
+                trigger: "for".into(),
+                label: "Built-in for".into(),
+                body: "for $1 in $2 {}".into(),
+                language: "Rust".into(),
+            },
+        ];
+        let user = vec![Snippet {
+            trigger: "fn".into(),
+            label: "My custom function".into(),
+            body: "pub fn $1() { $0 }".into(),
+            language: "Rust".into(),
+        }];
+
+        let merged = merge_snippets(builtin, user);
+        // Should have 2 snippets: user "fn" replaced built-in "fn", plus built-in "for"
+        assert_eq!(merged.len(), 2);
+        let fn_snippet = merged.iter().find(|s| s.trigger == "fn").unwrap();
+        assert_eq!(fn_snippet.label, "My custom function");
+        let for_snippet = merged.iter().find(|s| s.trigger == "for").unwrap();
+        assert_eq!(for_snippet.label, "Built-in for");
+    }
+
+    #[test]
+    fn test_merge_snippets_different_language() {
+        let builtin = vec![Snippet {
+            trigger: "fn".into(),
+            label: "Rust fn".into(),
+            body: "fn $1() {}".into(),
+            language: "Rust".into(),
+        }];
+        let user = vec![Snippet {
+            trigger: "fn".into(),
+            label: "Python fn".into(),
+            body: "def $1(): pass".into(),
+            language: "Python".into(),
+        }];
+
+        let merged = merge_snippets(builtin, user);
+        // Different languages, both should be kept
+        assert_eq!(merged.len(), 2);
+    }
+
+    #[test]
+    fn test_snippet_serialization_roundtrip() {
+        let snippets = vec![
+            Snippet {
+                trigger: "test".into(),
+                label: "Test snippet".into(),
+                body: "fn ${1:test_name}() {\n    $0\n}".into(),
+                language: "Rust".into(),
+            },
+        ];
+        let json = serde_json::to_string_pretty(&snippets).unwrap();
+        let deserialized: Vec<Snippet> = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.len(), 1);
+        assert_eq!(deserialized[0].trigger, "test");
+        assert_eq!(deserialized[0].body, "fn ${1:test_name}() {\n    $0\n}");
+    }
+
+    #[test]
+    fn test_user_snippets_path_not_none() {
+        // Should return a path on any supported platform
+        let path = user_snippets_path();
+        assert!(path.is_some());
+        let path = path.unwrap();
+        assert!(path.to_string_lossy().contains("openedit"));
+        assert!(path.to_string_lossy().contains("snippets.json"));
     }
 }

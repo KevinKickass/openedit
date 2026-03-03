@@ -597,6 +597,59 @@ pub fn render_editor(
         }
     }
 
+    // Snippet placeholder highlighting
+    if snippet_engine.is_active() {
+        let placeholder_positions = snippet_engine.state.placeholder_positions();
+        for (ph_pos, ph_len, is_current) in &placeholder_positions {
+            if let Some(screen_row) = pos_to_screen_row(ph_pos.line, ph_pos.col) {
+                let y = rect.top() + screen_row as f32 * line_height;
+                let col_in_row = if word_wrap {
+                    let vr = &displayed_vrows[screen_row].1;
+                    ph_pos.col.saturating_sub(vr.col_offset)
+                } else {
+                    ph_pos.col.saturating_sub(scroll_col)
+                };
+                let x = text_left + 4.0 + col_in_row as f32 * char_width;
+                let width = if *ph_len > 0 {
+                    *ph_len as f32 * char_width
+                } else {
+                    char_width * 0.5 // thin marker for zero-length placeholders
+                };
+                if *is_current {
+                    // Active placeholder: distinct teal/blue background
+                    let active_bg =
+                        egui::Color32::from_rgba_premultiplied(0, 180, 200, 60);
+                    let ph_rect = Rect::from_min_size(
+                        Pos2::new(x, y),
+                        Vec2::new(width, line_height),
+                    );
+                    ui.painter().rect_filled(ph_rect, 2.0, active_bg);
+                    // Border for visibility
+                    ui.painter().rect_stroke(
+                        ph_rect,
+                        2.0,
+                        egui::Stroke::new(
+                            1.0,
+                            egui::Color32::from_rgba_premultiplied(0, 200, 220, 120),
+                        ),
+                    );
+                } else {
+                    // Inactive placeholders: subtle underline
+                    let inactive_color =
+                        egui::Color32::from_rgba_premultiplied(150, 150, 150, 80);
+                    let underline_y = y + line_height - 1.0;
+                    ui.painter().line_segment(
+                        [
+                            Pos2::new(x, underline_y),
+                            Pos2::new(x + width, underline_y),
+                        ],
+                        egui::Stroke::new(1.5, inactive_color),
+                    );
+                }
+            }
+        }
+    }
+
     // Minimap
     let first_actual = displayed_vrows
         .first()
