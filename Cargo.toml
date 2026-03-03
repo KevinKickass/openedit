@@ -53,6 +53,9 @@ digest = "0.10"
 # Markdown
 pulldown-cmark = "0.12"
 
+# PDF generation
+printpdf = "0.8"
+
 # Error handling
 anyhow = "1"
 thiserror = "2"

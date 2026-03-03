@@ -14,6 +14,7 @@ use crate::hex_view::{self, HexViewState};
 use crate::lsp::{LspManager, ReferencesState, RenameDialogState};
 use crate::macro_recorder::{actions_from_script, actions_to_script, MacroAction, MacroRecorder};
 use crate::plugin_panel::{self, PluginPanelState};
+use crate::print::{self, PrintDialogState};
 use crate::search_panel::{self, SearchPanelState};
 use crate::sidebar::{self, SidebarState};
 use crate::snippets::SnippetEngine;
@@ -179,6 +180,8 @@ pub struct OpenEditApp {
     last_active_tab: usize,
     /// Plugin management panel state.
     plugin_panel_state: PluginPanelState,
+    /// Print / Export-to-PDF dialog state.
+    print_dialog_state: PrintDialogState,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -329,6 +332,7 @@ impl OpenEditApp {
             plugin_status_message_time: None,
             last_active_tab: 0,
             plugin_panel_state: PluginPanelState::default(),
+            print_dialog_state: PrintDialogState::default(),
         };
 
         // Load external plugins from config directory
@@ -971,6 +975,16 @@ impl OpenEditApp {
             "file.close_tab" => {
                 let idx = self.active_tab;
                 self.close_tab(idx);
+            }
+            "file.print" => {
+                self.print_dialog_state.open = true;
+                self.print_dialog_state.export_only = false;
+                self.print_dialog_state.status_message = None;
+            }
+            "file.export_pdf" => {
+                self.print_dialog_state.open = true;
+                self.print_dialog_state.export_only = true;
+                self.print_dialog_state.status_message = None;
             }
             "file.recent_files" => {
                 // Open the most recent file that isn't already open
@@ -1814,6 +1828,113 @@ impl OpenEditApp {
     fn save_config_state(&self) {
         config::save_config(&self.current_config());
     }
+
+    /// Execute print or export-to-PDF using the current print dialog config.
+    fn do_print_or_export(&mut self) {
+        let doc = match self.documents.get(self.active_tab) {
+            Some(d) => d,
+            None => {
+                self.print_dialog_state.status_message =
+                    Some("No document to print".to_string());
+                return;
+            }
+        };
+
+        let source = doc.buffer.to_string();
+        let lines = print::text_to_lines(&source);
+
+        let title = doc
+            .path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "Untitled".to_string());
+
+        // Get syntax highlight spans if requested
+        let highlight_spans = if self.print_dialog_state.config.syntax_highlighting {
+            let lang_key = doc
+                .language
+                .as_deref()
+                .and_then(SyntaxEngine::language_key);
+            if let Some(key) = lang_key {
+                let spans = self.syntax_engine.highlight_lines(&source, key);
+                if spans.is_empty() {
+                    None
+                } else {
+                    Some(spans)
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let syntax_colors = if self.print_dialog_state.config.syntax_highlighting {
+            Some(self.theme.syntax_colors.clone())
+        } else {
+            None
+        };
+
+        let pdf_bytes = print::generate_pdf(
+            &title,
+            &lines,
+            highlight_spans.as_ref(),
+            syntax_colors.as_ref(),
+            &self.print_dialog_state.config,
+        );
+
+        if self.print_dialog_state.export_only {
+            // Save to file via file dialog
+            let default_name = format!(
+                "{}.pdf",
+                doc.path
+                    .as_ref()
+                    .and_then(|p| p.file_stem())
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "document".to_string())
+            );
+
+            if let Some(path) = rfd::FileDialog::new()
+                .set_file_name(&default_name)
+                .add_filter("PDF", &["pdf"])
+                .save_file()
+            {
+                match std::fs::write(&path, &pdf_bytes) {
+                    Ok(()) => {
+                        log::info!("PDF exported to {}", path.display());
+                        self.print_dialog_state.open = false;
+                    }
+                    Err(e) => {
+                        self.print_dialog_state.status_message =
+                            Some(format!("Failed to write PDF: {}", e));
+                    }
+                }
+            }
+        } else {
+            // Print via system: save to temp file and open with default viewer
+            let temp_dir = std::env::temp_dir();
+            let temp_path = temp_dir.join(format!("openedit_print_{}.pdf", std::process::id()));
+            match std::fs::write(&temp_path, &pdf_bytes) {
+                Ok(()) => {
+                    match print::open_with_system(&temp_path) {
+                        Ok(()) => {
+                            log::info!("Opened PDF for printing: {}", temp_path.display());
+                            self.print_dialog_state.open = false;
+                        }
+                        Err(e) => {
+                            self.print_dialog_state.status_message =
+                                Some(format!("Failed to open PDF viewer: {}", e));
+                        }
+                    }
+                }
+                Err(e) => {
+                    self.print_dialog_state.status_message =
+                        Some(format!("Failed to write temp PDF: {}", e));
+                }
+            }
+        }
+    }
 }
 
 impl eframe::App for OpenEditApp {
@@ -2408,6 +2529,15 @@ impl eframe::App for OpenEditApp {
                         }
                         if ui.button("Save As       Ctrl+Shift+S").clicked() {
                             self.save_as();
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        if ui.button("Export to PDF").clicked() {
+                            self.execute_command("file.export_pdf");
+                            ui.close_menu();
+                        }
+                        if ui.button("Print").clicked() {
+                            self.execute_command("file.print");
                             ui.close_menu();
                         }
                         ui.separator();
@@ -4365,6 +4495,15 @@ impl eframe::App for OpenEditApp {
                     });
                 });
             self.show_about = open;
+        }
+
+        // Print / Export to PDF dialog
+        if self.print_dialog_state.open {
+            if let Some(confirmed) = print::render_print_dialog(ctx, &mut self.print_dialog_state) {
+                if confirmed {
+                    self.do_print_or_export();
+                }
+            }
         }
 
         // Keyboard shortcuts cheatsheet
