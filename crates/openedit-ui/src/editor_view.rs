@@ -36,6 +36,13 @@ pub struct EditorViewState {
     pub block_select_start: Option<Position>,
     /// Whether we are currently performing a block selection drag.
     pub block_selecting: bool,
+    /// Set when user Ctrl+clicks on a position (go-to-definition).
+    pub ctrl_click_pos: Option<Position>,
+    /// Set when user Ctrl+hovers over text (request hover info).
+    /// (document position, screen position for tooltip placement)
+    pub hover_request: Option<(Position, Pos2)>,
+    /// Set when user hovers over a diagnostic squiggle — contains the message to display.
+    pub diagnostic_hover: Option<(String, Pos2)>,
 }
 
 impl Default for EditorViewState {
@@ -44,6 +51,9 @@ impl Default for EditorViewState {
             dragging: false,
             block_select_start: None,
             block_selecting: false,
+            ctrl_click_pos: None,
+            hover_request: None,
+            diagnostic_hover: None,
         }
     }
 }
@@ -661,26 +671,38 @@ pub fn render_editor(
         Position::new(line, col)
     };
 
-    // Mouse click to position cursor (with Alt+drag block selection)
+    // Clear per-frame event fields
+    view_state.ctrl_click_pos = None;
+    view_state.hover_request = None;
+    view_state.diagnostic_hover = None;
+
+    // Mouse click to position cursor (with Alt+drag block selection, Ctrl+click go-to-definition)
     if response.drag_started() {
         if let Some(pos) = response.interact_pointer_pos() {
             if pos.x >= text_left {
                 let doc_pos = mouse_to_doc_pos(pos);
                 let alt = ui.input(|i| i.modifiers.alt);
                 let shift = ui.input(|i| i.modifiers.shift);
-                if alt {
+                let ctrl = ui.input(|i| i.modifiers.ctrl || i.modifiers.mac_cmd);
+                if ctrl && !shift && !alt {
+                    // Ctrl+Click: go to definition
+                    view_state.ctrl_click_pos = Some(doc_pos);
+                    doc.cursors.primary_mut().move_to(doc_pos, false);
+                    view_state.dragging = false;
+                } else if alt {
                     // Start block/column selection
                     view_state.block_selecting = true;
                     view_state.block_select_start = Some(doc_pos);
                     doc.cursors.clear_extra_cursors();
                     doc.cursors.primary_mut().move_to(doc_pos, false);
+                    view_state.dragging = true;
                 } else {
                     // Normal drag
                     view_state.block_selecting = false;
                     view_state.block_select_start = None;
                     doc.cursors.primary_mut().move_to(doc_pos, shift);
+                    view_state.dragging = true;
                 }
-                view_state.dragging = true;
             }
         }
     }
@@ -703,6 +725,66 @@ pub fn render_editor(
         view_state.dragging = false;
         view_state.block_selecting = false;
         // Keep block_select_start so multi-cursors remain active
+    }
+
+    // Ctrl+hover: request LSP hover info, or show diagnostic tooltip on hover
+    if response.hovered() {
+        if let Some(hover_pos) = ui.input(|i| i.pointer.hover_pos()) {
+            if hover_pos.x >= text_left {
+                // Compute document position from hover pixel pos (inline, to avoid closure borrow)
+                let h_screen_row = ((hover_pos.y - rect.top()) / line_height) as usize;
+                let (h_line_idx, h_col_offset) = displayed_vrows
+                    .iter()
+                    .find(|(r, _)| *r == h_screen_row)
+                    .map(|&(_, vr)| (vr.line_idx, vr.col_offset))
+                    .unwrap_or_else(|| {
+                        displayed_vrows
+                            .last()
+                            .map(|&(_, vr)| (vr.line_idx, vr.col_offset))
+                            .unwrap_or((0, 0))
+                    });
+                let h_raw_col =
+                    (((hover_pos.x - text_left - 4.0) / char_width).round() as isize).max(0)
+                        as usize;
+                let h_col =
+                    h_col_offset + h_raw_col + (if word_wrap { 0 } else { scroll_col });
+                let h_line = h_line_idx.min(total_lines.saturating_sub(1));
+                let h_col = h_col.min(doc.buffer.line_len_chars_no_newline(h_line));
+                let doc_pos = Position::new(h_line, h_col);
+
+                let ctrl = ui.input(|i| i.modifiers.ctrl || i.modifiers.mac_cmd);
+
+                // Check if hovering over a diagnostic squiggle
+                if let Some(ctx) = render_ctx {
+                    for diag in ctx.lsp_diagnostics {
+                        let on_diag_line = diag.line == doc_pos.line
+                            || (diag.line <= doc_pos.line && diag.end_line >= doc_pos.line);
+                        if on_diag_line {
+                            let col = doc_pos.col;
+                            let in_range = if diag.line == diag.end_line {
+                                col >= diag.col && col <= diag.end_col
+                            } else if doc_pos.line == diag.line {
+                                col >= diag.col
+                            } else if doc_pos.line == diag.end_line {
+                                col <= diag.end_col
+                            } else {
+                                true
+                            };
+                            if in_range {
+                                view_state.diagnostic_hover =
+                                    Some((diag.message.clone(), hover_pos));
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // Ctrl+hover: request hover info from LSP
+                if ctrl {
+                    view_state.hover_request = Some((doc_pos, hover_pos));
+                }
+            }
+        }
     }
 
     // Scroll

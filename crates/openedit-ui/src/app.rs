@@ -921,6 +921,53 @@ impl OpenEditApp {
                     doc.clear_bookmarks();
                 }
             }
+            "nav.go_to_definition" => {
+                if let Some(doc) = self.documents.get(self.active_tab) {
+                    if let (Some(ref lang), Some(ref path)) = (&doc.language, &doc.path) {
+                        let uri = Url::from_file_path(path)
+                            .map(|u| u.to_string())
+                            .unwrap_or_default();
+                        let cursor = doc.cursors.primary().position;
+                        self.lsp_manager.request_definition(
+                            lang,
+                            &uri,
+                            cursor.line as u32,
+                            cursor.col as u32,
+                        );
+                    }
+                }
+            }
+            "nav.hover_info" => {
+                // Request hover info at cursor position (Ctrl+K Ctrl+I style)
+                if let Some(doc) = self.documents.get(self.active_tab) {
+                    if let (Some(ref lang), Some(ref path)) = (&doc.language, &doc.path) {
+                        let uri = Url::from_file_path(path)
+                            .map(|u| u.to_string())
+                            .unwrap_or_default();
+                        let cursor = doc.cursors.primary().position;
+                        self.lsp_manager.request_hover(
+                            lang,
+                            &uri,
+                            cursor.line as u32,
+                            cursor.col as u32,
+                        );
+                        // Set hover_pos to approximate cursor screen position
+                        // (will be displayed next frame when response arrives)
+                        let char_w = crate::editor_view::char_width_for_font(self.font_size);
+                        let line_h = crate::editor_view::line_height_for_font(self.font_size);
+                        let digit_count =
+                            format!("{}", doc.buffer.len_lines()).len().max(3);
+                        let gutter_w =
+                            (digit_count as f32 + 2.0) * char_w + char_w * 1.5 + 8.0;
+                        let visible_line =
+                            cursor.line.saturating_sub(doc.scroll_line);
+                        self.hover_pos = Some(egui::Pos2::new(
+                            200.0 + gutter_w + 4.0 + cursor.col as f32 * char_w,
+                            100.0 + visible_line as f32 * line_h,
+                        ));
+                    }
+                }
+            }
             // Text tools — operate on selection or entire document
             cmd if cmd.starts_with("tools.") => {
                 if let Some(doc) = self.documents.get_mut(self.active_tab) {
@@ -1285,6 +1332,17 @@ impl eframe::App for OpenEditApp {
                 self.lsp_completions = items;
                 self.lsp_completion_selected = 0;
                 self.lsp_completions_visible = true;
+                // Also merge LSP labels into word-based autocomplete for unified display
+                if self.autocomplete.visible {
+                    let existing: std::collections::HashSet<String> =
+                        self.autocomplete.suggestions.iter().cloned().collect();
+                    for item in &self.lsp_completions {
+                        if !existing.contains(&item.label) {
+                            self.autocomplete.suggestions.push(item.label.clone());
+                        }
+                    }
+                    self.autocomplete.suggestions.truncate(15);
+                }
             }
         }
         if let Some(hover) = self.lsp_manager.take_hover() {
@@ -1388,6 +1446,79 @@ impl eframe::App for OpenEditApp {
             }
         }
 
+        // LSP completion keyboard handling
+        if self.lsp_completions_visible && !self.lsp_completions.is_empty() {
+            let mut lsp_accept = false;
+            let mut lsp_dismiss = false;
+            let mut lsp_nav_up = false;
+            let mut lsp_nav_down = false;
+
+            ctx.input(|input| {
+                for event in &input.events {
+                    if let egui::Event::Key {
+                        key, pressed: true, ..
+                    } = event
+                    {
+                        match key {
+                            egui::Key::Enter | egui::Key::Tab => lsp_accept = true,
+                            egui::Key::Escape => lsp_dismiss = true,
+                            egui::Key::ArrowUp => lsp_nav_up = true,
+                            egui::Key::ArrowDown => lsp_nav_down = true,
+                            _ => {}
+                        }
+                    }
+                }
+            });
+
+            if lsp_nav_up {
+                if self.lsp_completion_selected > 0 {
+                    self.lsp_completion_selected -= 1;
+                } else {
+                    self.lsp_completion_selected = self.lsp_completions.len().saturating_sub(1);
+                }
+            }
+            if lsp_nav_down {
+                self.lsp_completion_selected =
+                    (self.lsp_completion_selected + 1) % self.lsp_completions.len();
+            }
+            if lsp_accept {
+                // Insert the selected LSP completion
+                if let Some(item) = self.lsp_completions.get(self.lsp_completion_selected) {
+                    let insert = item
+                        .insert_text
+                        .clone()
+                        .unwrap_or_else(|| item.label.clone());
+                    if let Some(doc) = self.documents.get_mut(self.active_tab) {
+                        // Remove the prefix that was already typed
+                        let cursor = doc.cursors.primary().position;
+                        let line = doc.buffer.line(cursor.line).to_string();
+                        let before_cursor: String = line.chars().take(cursor.col).collect();
+                        let prefix: String = before_cursor
+                            .chars()
+                            .rev()
+                            .take_while(|c| c.is_alphanumeric() || *c == '_')
+                            .collect::<String>()
+                            .chars()
+                            .rev()
+                            .collect();
+                        // Delete the prefix
+                        for _ in 0..prefix.len() {
+                            doc.backspace();
+                        }
+                        // Insert completion text
+                        doc.insert_text(&insert);
+                        self.lsp_change_timer = Some(std::time::Instant::now());
+                    }
+                }
+                self.lsp_completions_visible = false;
+                self.lsp_completions.clear();
+            }
+            if lsp_dismiss {
+                self.lsp_completions_visible = false;
+                self.lsp_completions.clear();
+            }
+        }
+
         // Global keyboard shortcuts
         let mut open_file = false;
         let mut save_file = false;
@@ -1419,6 +1550,7 @@ impl eframe::App for OpenEditApp {
         let mut toggle_split = false;
         let mut diff_next_hunk = false;
         let mut diff_prev_hunk = false;
+        let mut go_to_definition = false;
 
         ctx.input(|input| {
             let ctrl = input.modifiers.ctrl || input.modifiers.mac_cmd;
@@ -1432,6 +1564,7 @@ impl eframe::App for OpenEditApp {
                     match key {
                         egui::Key::F7 if shift => diff_prev_hunk = true,
                         egui::Key::F7 => diff_next_hunk = true,
+                        egui::Key::F12 if !shift => go_to_definition = true,
                         egui::Key::F11 => toggle_zen = true,
                         egui::Key::Backslash if ctrl => toggle_split = true,
                         egui::Key::Q if ctrl && shift => playback_macro = true,
@@ -1652,6 +1785,24 @@ impl eframe::App for OpenEditApp {
             diff_view::navigate_prev_hunk(&mut self.diff_state, line_height);
         }
 
+        if go_to_definition {
+            // F12: request go-to-definition at cursor position via LSP
+            if let Some(doc) = self.documents.get(self.active_tab) {
+                if let (Some(ref lang), Some(ref path)) = (&doc.language, &doc.path) {
+                    let uri = Url::from_file_path(path)
+                        .map(|u| u.to_string())
+                        .unwrap_or_default();
+                    let cursor = doc.cursors.primary().position;
+                    self.lsp_manager.request_definition(
+                        lang,
+                        &uri,
+                        cursor.line as u32,
+                        cursor.col as u32,
+                    );
+                }
+            }
+        }
+
         // Build tab data
         let tabs: Vec<(String, bool, Option<String>)> = self
             .documents
@@ -1867,7 +2018,22 @@ impl eframe::App for OpenEditApp {
                             ui.close_menu();
                         }
                         if ui.button("Go to Definition  F12").clicked() {
-                            log::info!("Go to Definition: LSP required");
+                            if let Some(doc) = self.documents.get(self.active_tab) {
+                                if let (Some(ref lang), Some(ref path)) =
+                                    (&doc.language, &doc.path)
+                                {
+                                    let uri = Url::from_file_path(path)
+                                        .map(|u| u.to_string())
+                                        .unwrap_or_default();
+                                    let cursor = doc.cursors.primary().position;
+                                    self.lsp_manager.request_definition(
+                                        lang,
+                                        &uri,
+                                        cursor.line as u32,
+                                        cursor.col as u32,
+                                    );
+                                }
+                            }
                             ui.close_menu();
                         }
                         if ui.button("Go to References  Shift+F12").clicked() {
@@ -2576,7 +2742,7 @@ impl eframe::App for OpenEditApp {
                                 .layout(egui::Layout::top_down(egui::Align::LEFT)),
                         );
                         if let Some(doc) = self.documents.get_mut(self.active_tab) {
-                            editor_view::render_editor(
+                            let was_modified = editor_view::render_editor(
                                 &mut pane1_ui,
                                 doc,
                                 &self.theme,
@@ -2592,6 +2758,26 @@ impl eframe::App for OpenEditApp {
                                 Some(&render_context),
                                 &mut self.snippet_engine,
                             );
+                            if was_modified {
+                                self.lsp_change_timer = Some(std::time::Instant::now());
+                            }
+                        }
+                    }
+
+                    // Handle Ctrl+Click from pane 1
+                    if let Some(click_pos) = self.editor_view_state.ctrl_click_pos.take() {
+                        if let Some(doc) = self.documents.get(self.active_tab) {
+                            if let (Some(ref lang), Some(ref path)) = (&doc.language, &doc.path) {
+                                let uri = Url::from_file_path(path)
+                                    .map(|u| u.to_string())
+                                    .unwrap_or_default();
+                                self.lsp_manager.request_definition(
+                                    lang,
+                                    &uri,
+                                    click_pos.line as u32,
+                                    click_pos.col as u32,
+                                );
+                            }
                         }
                     }
 
@@ -2603,7 +2789,7 @@ impl eframe::App for OpenEditApp {
                                 .layout(egui::Layout::top_down(egui::Align::LEFT)),
                         );
                         if let Some(doc) = self.documents.get_mut(second_tab) {
-                            editor_view::render_editor(
+                            let was_modified = editor_view::render_editor(
                                 &mut pane2_ui,
                                 doc,
                                 &self.theme,
@@ -2619,6 +2805,9 @@ impl eframe::App for OpenEditApp {
                                 Some(&render_context),
                                 &mut self.snippet_engine,
                             );
+                            if was_modified {
+                                self.lsp_change_timer = Some(std::time::Instant::now());
+                            }
                         }
                     }
                 } else if self.show_markdown_preview {
@@ -2651,7 +2840,7 @@ impl eframe::App for OpenEditApp {
                     let source_for_preview;
                     if let Some(doc) = self.documents.get_mut(self.active_tab) {
                         source_for_preview = doc.buffer.to_string();
-                        editor_view::render_editor(
+                        let was_modified = editor_view::render_editor(
                             &mut editor_ui,
                             doc,
                             &self.theme,
@@ -2667,6 +2856,9 @@ impl eframe::App for OpenEditApp {
                             Some(&render_context),
                             &mut self.snippet_engine,
                         );
+                        if was_modified {
+                            self.lsp_change_timer = Some(std::time::Instant::now());
+                        }
                     } else {
                         source_for_preview = String::new();
                     }
@@ -2710,6 +2902,9 @@ impl eframe::App for OpenEditApp {
                         if was_modified {
                             // Trigger debounced LSP didChange and request completions
                             self.lsp_change_timer = Some(std::time::Instant::now());
+                            // Clear stale hover on edits
+                            self.hover_text = None;
+                            self.hover_pos = None;
                             if let (Some(ref lang), Some(ref path)) = (&doc.language, &doc.path) {
                                 let uri = url::Url::from_file_path(path)
                                     .map(|u| u.to_string())
@@ -2726,6 +2921,47 @@ impl eframe::App for OpenEditApp {
                     }
                 }
 
+                // Handle Ctrl+Click go-to-definition from editor view
+                if let Some(click_pos) = self.editor_view_state.ctrl_click_pos.take() {
+                    if let Some(doc) = self.documents.get(self.active_tab) {
+                        if let (Some(ref lang), Some(ref path)) = (&doc.language, &doc.path) {
+                            let uri = Url::from_file_path(path)
+                                .map(|u| u.to_string())
+                                .unwrap_or_default();
+                            self.lsp_manager.request_definition(
+                                lang,
+                                &uri,
+                                click_pos.line as u32,
+                                click_pos.col as u32,
+                            );
+                        }
+                    }
+                }
+
+                // Handle Ctrl+hover for LSP hover info
+                if let Some((doc_pos, screen_pos)) = self.editor_view_state.hover_request.take() {
+                    self.hover_pos = Some(screen_pos);
+                    if let Some(doc) = self.documents.get(self.active_tab) {
+                        if let (Some(ref lang), Some(ref path)) = (&doc.language, &doc.path) {
+                            let uri = Url::from_file_path(path)
+                                .map(|u| u.to_string())
+                                .unwrap_or_default();
+                            self.lsp_manager.request_hover(
+                                lang,
+                                &uri,
+                                doc_pos.line as u32,
+                                doc_pos.col as u32,
+                            );
+                        }
+                    }
+                } else {
+                    // Clear hover when not Ctrl+hovering
+                    if !ctx.input(|i| i.modifiers.ctrl || i.modifiers.mac_cmd) {
+                        self.hover_text = None;
+                        self.hover_pos = None;
+                    }
+                }
+
                 // LSP hover tooltip
                 if let Some(ref hover_text) = self.hover_text {
                     if let Some(pos) = self.hover_pos {
@@ -2736,6 +2972,18 @@ impl eframe::App for OpenEditApp {
                         );
                         crate::lsp::render_hover_tooltip(&mut hover_ui, hover_text, pos);
                     }
+                }
+
+                // Diagnostic hover tooltip (separate from LSP hover)
+                if let Some((ref diag_msg, diag_pos)) =
+                    self.editor_view_state.diagnostic_hover
+                {
+                    let mut diag_ui = main_ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(editor_rect)
+                            .layout(egui::Layout::top_down(egui::Align::LEFT)),
+                    );
+                    crate::lsp::render_hover_tooltip(&mut diag_ui, diag_msg, diag_pos);
                 }
 
                 // LSP autocomplete popup (when visible, overlays on the editor)
@@ -3452,6 +3700,9 @@ impl eframe::App for OpenEditApp {
                                     ("Ctrl+H", "Replace"),
                                     ("Ctrl+Shift+F", "Find in Files"),
                                     ("Ctrl+Shift+P", "Command Palette"),
+                                    ("F12", "Go to Definition (LSP)"),
+                                    ("Ctrl+Click", "Go to Definition (LSP)"),
+                                    ("Ctrl+Hover", "Show Hover Info (LSP)"),
                                 ],
                             ),
                             (
