@@ -73,8 +73,13 @@ pub fn colorize_brackets(
     }
 
     let mut result = Vec::new();
-    for line_idx in visible_start..visible_end.min(all_lines.len()) {
-        let (brackets, new_depth) = colorize_brackets_line(all_lines[line_idx], depth);
+    for (line_idx, line) in all_lines
+        .iter()
+        .enumerate()
+        .take(visible_end.min(all_lines.len()))
+        .skip(visible_start)
+    {
+        let (brackets, new_depth) = colorize_brackets_line(line, depth);
         if !brackets.is_empty() {
             result.push((line_idx, brackets));
         }

@@ -26,6 +26,7 @@ impl std::fmt::Display for VimMode {
 
 /// A recorded vim action for the `.` repeat command.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 enum VimAction {
     #[allow(dead_code)]
     InsertText(String),

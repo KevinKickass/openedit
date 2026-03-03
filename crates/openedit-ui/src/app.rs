@@ -149,6 +149,7 @@ pub struct OpenEditApp {
     /// Split divider drag state.
     #[allow(dead_code)]
     split_ratio: f32,
+    #[allow(dead_code)]
     split_dragging: bool,
     /// Show line numbers in the gutter.
     show_line_numbers: bool,
@@ -253,8 +254,10 @@ impl OpenEditApp {
         let theme_registry = ThemeRegistry::new();
         let theme = theme_registry.get(&cfg.ui.theme);
 
-        let mut sidebar_state = SidebarState::default();
-        sidebar_state.visible = cfg.ui.show_sidebar;
+        let sidebar_state = sidebar::SidebarState {
+            visible: cfg.ui.show_sidebar,
+            ..Default::default()
+        };
 
         let mut app = Self {
             documents: Vec::new(),
@@ -862,9 +865,9 @@ impl OpenEditApp {
                                 None
                             };
 
-                            if (ch == '"' || ch == '\'') && next_char == Some(ch) {
-                                doc.move_cursor_right(false);
-                            } else if ch == close && next_char == Some(close) {
+                            if ((ch == '"' || ch == '\'') && next_char == Some(ch))
+                                || (ch == close && next_char == Some(close))
+                            {
                                 doc.move_cursor_right(false);
                             } else {
                                 let pair = format!("{}{}", ch, close);

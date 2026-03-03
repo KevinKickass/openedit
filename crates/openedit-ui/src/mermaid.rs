@@ -210,10 +210,9 @@ fn parse_flowchart(src: &str) -> Option<Flowchart> {
 fn update_or_insert_node(nodes: &mut Vec<FlowNode>, node: FlowNode) {
     if let Some(existing) = nodes.iter_mut().find(|n| n.id == node.id) {
         // Only upgrade from Default shape
-        if existing.shape == NodeShape::Default && node.shape != NodeShape::Default {
-            existing.label = node.label;
-            existing.shape = node.shape;
-        } else if existing.label == existing.id && node.label != node.id {
+        if (existing.shape == NodeShape::Default && node.shape != NodeShape::Default)
+            || (existing.label == existing.id && node.label != node.id)
+        {
             existing.label = node.label;
             existing.shape = node.shape;
         }
@@ -433,9 +432,9 @@ fn find_next_arrow(s: &str) -> Option<(&str, EdgeStyle, Option<String>, &str)> {
 /// Extract `|label|` from the start of a string (after an arrow).
 fn extract_pipe_label(s: &str) -> Option<String> {
     let s = s.trim_start();
-    if s.starts_with('|') {
-        if let Some(end) = s[1..].find('|') {
-            let label = s[1..1 + end].trim().to_string();
+    if let Some(stripped) = s.strip_prefix('|') {
+        if let Some(end) = stripped.find('|') {
+            let label = stripped[..end].trim().to_string();
             if !label.is_empty() {
                 return Some(label);
             }
