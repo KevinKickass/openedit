@@ -4,6 +4,7 @@ use crate::gutter;
 use crate::lsp::{self, LspDiagnostic};
 use crate::macro_recorder::{MacroAction, MacroRecorder};
 use crate::theme::EditorTheme;
+use crate::vim::{VimMode, VimState};
 use egui::{self, Pos2, Rect, Ui, Vec2};
 use openedit_core::cursor::Position;
 use openedit_core::syntax::{HighlightSpan, SyntaxEngine};
@@ -77,6 +78,7 @@ pub fn render_editor(
     word_wrap: bool,
     macro_rec: &mut MacroRecorder,
     render_ctx: Option<&EditorRenderContext<'_>>,
+    vim_state: Option<&mut VimState>,
 ) -> bool {
     let line_height = line_height_for_font(font_size);
     let char_width = char_width_for_font(font_size);
@@ -716,7 +718,7 @@ pub fn render_editor(
 
     // Keyboard input
     let cursor_before = doc.cursors.primary().position;
-    let modified = handle_keyboard_input(ui, doc, macro_rec);
+    let modified = handle_keyboard_input(ui, doc, macro_rec, vim_state);
     let cursor_moved_by_keyboard = doc.cursors.primary().position != cursor_before || modified;
 
     // Update autocomplete after edits
@@ -920,7 +922,12 @@ fn render_selection_wrapped(
     }
 }
 
-fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroRecorder) -> bool {
+fn handle_keyboard_input(
+    ui: &mut Ui,
+    doc: &mut Document,
+    macro_rec: &mut MacroRecorder,
+    vim_state: Option<&mut VimState>,
+) -> bool {
     let mut modified = false;
     let mut copy_text: Option<String> = None;
     let page_size = {
@@ -933,392 +940,150 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
     let mut pending_macro_actions: Vec<MacroAction> = Vec::new();
     let is_recording = macro_rec.is_recording();
 
-    ui.input(|input| {
-        let shift = input.modifiers.shift;
-        let ctrl = input.modifiers.ctrl || input.modifiers.mac_cmd;
-        let alt = input.modifiers.alt;
+    // Check vim mode up front so we can use it inside the closure
+    let vim_enabled = vim_state
+        .as_ref()
+        .map_or(false, |v| v.enabled);
 
-        for event in &input.events {
-            match event {
-                egui::Event::Key {
-                    key, pressed: true, ..
-                } => {
-                    // Helper: create a key name string from egui::Key
-                    let key_name = format!("{:?}", key);
+    // Collect events first so we can process them with vim_state outside the closure.
+    let events = ui.input(|input| input.events.clone());
 
-                    match key {
-                        // Clipboard
-                        egui::Key::C if ctrl => {
-                            let text = doc.selected_text();
-                            if !text.is_empty() {
-                                copy_text = Some(text);
-                            }
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::X if ctrl => {
-                            let text = doc.selected_text();
-                            if !text.is_empty() {
-                                copy_text = Some(text);
-                                doc.delete_selection_public();
+    // If vim mode is enabled, process events through vim first
+    if vim_enabled {
+        if let Some(vim) = vim_state {
+            for event in &events {
+                let vim_mode = vim.mode;
+                match event {
+                    egui::Event::Key {
+                        key,
+                        pressed: true,
+                        modifiers: key_mods,
+                        ..
+                    } => {
+                        let ctrl = key_mods.ctrl || key_mods.mac_cmd;
+                        let shift = key_mods.shift;
+                        let alt = key_mods.alt;
+                        let vim_key_str = egui_key_to_vim_str(key, ctrl, shift, alt);
+                        if let Some(ref key_str) = vim_key_str {
+                            let mut vim_modified = false;
+                            let consumed = vim.handle_key(key_str, doc, &mut vim_modified);
+                            if vim_modified {
                                 modified = true;
                             }
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
+                            if consumed {
+                                continue;
                             }
                         }
-                        // Line operations
-                        egui::Key::ArrowUp if alt => {
-                            doc.move_line_up();
-                            modified = true;
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
+
+                        // In insert mode, fall through to normal key handling below.
+                        // In other modes, we already tried vim and it didn't consume,
+                        // so we skip normal handling for non-modifier keys to avoid
+                        // interfering with vim expectations.
+                        if vim_mode != VimMode::Insert {
+                            // Still allow Ctrl+key combos to pass through to editor
+                            // (e.g., Ctrl+S for save is handled at app level)
+                            if !ctrl {
+                                continue;
                             }
                         }
-                        egui::Key::ArrowDown if alt => {
-                            doc.move_line_down();
-                            modified = true;
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::K if ctrl && shift => {
-                            doc.delete_line();
-                            modified = true;
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        // Navigation
-                        egui::Key::ArrowLeft if ctrl => {
-                            doc.move_cursor_word_left(shift);
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::ArrowRight if ctrl => {
-                            doc.move_cursor_word_right(shift);
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::ArrowLeft => {
-                            doc.move_cursor_left(shift);
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::ArrowRight => {
-                            doc.move_cursor_right(shift);
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::ArrowUp => {
-                            doc.move_cursor_up(shift);
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::ArrowDown => {
-                            doc.move_cursor_down(shift);
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::Home if ctrl => {
-                            doc.move_cursor_doc_start(shift);
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::End if ctrl => {
-                            doc.move_cursor_doc_end(shift);
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::Home => {
-                            doc.move_cursor_home(shift);
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::End => {
-                            doc.move_cursor_end(shift);
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::PageUp => {
-                            doc.move_cursor_page_up(page_size, shift);
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::PageDown => {
-                            doc.move_cursor_page_down(page_size, shift);
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        // Editing
-                        egui::Key::Backspace if ctrl => {
-                            doc.delete_word_left();
-                            modified = true;
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::Backspace => {
-                            doc.backspace();
-                            modified = true;
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::Delete if ctrl => {
-                            doc.delete_word_right();
-                            modified = true;
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::Delete => {
-                            doc.delete_forward();
-                            modified = true;
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::Enter => {
-                            doc.insert_newline_with_indent();
-                            modified = true;
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::Tab if shift => {
-                            doc.unindent();
-                            modified = true;
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::Tab => {
-                            doc.insert_text("    ");
-                            modified = true;
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        // Selection/undo
-                        egui::Key::A if ctrl => {
-                            doc.select_all();
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::Z if ctrl && shift => {
-                            doc.redo();
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::Z if ctrl => {
-                            doc.undo();
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::Y if ctrl => {
-                            doc.redo();
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::Slash if ctrl => {
-                            doc.toggle_comment();
-                            modified = true;
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::D if ctrl => {
-                            doc.select_next_occurrence();
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        egui::Key::L if ctrl && shift => {
-                            doc.select_all_occurrences();
-                        }
-                        egui::Key::Escape => {
-                            if doc.cursors.cursor_count() > 1 {
-                                doc.cursors.clear_extra_cursors();
-                            }
-                            if is_recording {
-                                pending_macro_actions.push(MacroAction::KeyAction {
-                                    key: key_name,
-                                    ctrl,
-                                    shift,
-                                    alt,
-                                });
-                            }
-                        }
-                        _ => {}
+
+                        // In insert mode, process keys normally (fall through below)
+                        let key_name = format!("{:?}", key);
+                        handle_editor_key(
+                            key,
+                            ctrl,
+                            shift,
+                            alt,
+                            &key_name,
+                            doc,
+                            &mut modified,
+                            &mut copy_text,
+                            is_recording,
+                            &mut pending_macro_actions,
+                            page_size,
+                        );
                     }
+                    egui::Event::Paste(text) => {
+                        // In insert mode, allow paste normally
+                        if vim_mode == VimMode::Insert {
+                            if !text.is_empty() {
+                                vim.record_insert_text(text);
+                                doc.insert_text(text);
+                                modified = true;
+                                if is_recording {
+                                    pending_macro_actions
+                                        .push(MacroAction::Paste(text.clone()));
+                                }
+                            }
+                        }
+                        // In other modes, vim handles yank/put internally
+                    }
+                    egui::Event::Text(text) => {
+                        if !text.chars().all(|c| c.is_control()) {
+                            if vim_mode == VimMode::Insert {
+                                // Track text for vim `.` repeat
+                                vim.record_insert_text(text);
+                                // Fall through to normal text handling
+                                handle_text_input(
+                                    text,
+                                    doc,
+                                    &mut modified,
+                                    is_recording,
+                                    &mut pending_macro_actions,
+                                );
+                            } else if vim_mode == VimMode::Command {
+                                // In Command mode, vim handles text input internally
+                                // via handle_key with single-char strings
+                                let mut vim_modified = false;
+                                vim.handle_key(text, doc, &mut vim_modified);
+                                if vim_modified {
+                                    modified = true;
+                                }
+                            } else {
+                                // Normal/Visual mode: text chars are vim commands
+                                // (e.g., 'd', 'w', 'y', etc.)
+                                // These should already have been handled via Key events
+                                // but some chars come only as Text events (e.g., shifted chars
+                                // like '$', '^', etc.), so route them to vim.
+                                let mut vim_modified = false;
+                                vim.handle_key(text, doc, &mut vim_modified);
+                                if vim_modified {
+                                    modified = true;
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    } else {
+        // Normal (non-vim) mode: process all events as before
+        for event in &events {
+            match event {
+                egui::Event::Key {
+                    key,
+                    pressed: true,
+                    modifiers: key_mods,
+                    ..
+                } => {
+                    let ctrl = key_mods.ctrl || key_mods.mac_cmd;
+                    let shift = key_mods.shift;
+                    let alt = key_mods.alt;
+                    let key_name = format!("{:?}", key);
+                    handle_editor_key(
+                        key,
+                        ctrl,
+                        shift,
+                        alt,
+                        &key_name,
+                        doc,
+                        &mut modified,
+                        &mut copy_text,
+                        is_recording,
+                        &mut pending_macro_actions,
+                        page_size,
+                    );
                 }
                 egui::Event::Paste(text) => {
                     if !text.is_empty() {
@@ -1331,83 +1096,19 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
                 }
                 egui::Event::Text(text) => {
                     if !text.chars().all(|c| c.is_control()) {
-                        if is_recording {
-                            pending_macro_actions.push(MacroAction::InsertText(text.clone()));
-                        }
-                        // Bracket auto-close
-                        if text.len() == 1 {
-                            let ch = text.chars().next().unwrap();
-                            if let Some(close) = match ch {
-                                '(' => Some(')'),
-                                '[' => Some(']'),
-                                '{' => Some('}'),
-                                '"' => Some('"'),
-                                '\'' => Some('\''),
-                                _ => None,
-                            } {
-                                // If the character after cursor is the same closing char, skip it
-                                let cursor = doc.cursors.primary();
-                                let offset = doc
-                                    .buffer
-                                    .line_col_to_char(cursor.position.line, cursor.position.col);
-                                let next_char = if offset < doc.buffer.len_chars() {
-                                    Some(doc.buffer.char_at(offset))
-                                } else {
-                                    None
-                                };
-
-                                // For quotes, skip if next char is the same quote
-                                if (ch == '"' || ch == '\'') && next_char == Some(ch) {
-                                    // Just move cursor past the existing closing char
-                                    doc.move_cursor_right(false);
-                                    modified = true;
-                                } else if ch == close && next_char == Some(close) {
-                                    // Skip over existing closing bracket
-                                    doc.move_cursor_right(false);
-                                    modified = true;
-                                } else {
-                                    // Insert open + close, cursor between them
-                                    let pair = format!("{}{}", ch, close);
-                                    doc.insert_text(&pair);
-                                    doc.move_cursor_left(false);
-                                    modified = true;
-                                }
-                            } else if let Some(_) = match ch {
-                                ')' | ']' | '}' => {
-                                    let cursor = doc.cursors.primary();
-                                    let offset = doc.buffer.line_col_to_char(
-                                        cursor.position.line,
-                                        cursor.position.col,
-                                    );
-                                    let next_char = if offset < doc.buffer.len_chars() {
-                                        Some(doc.buffer.char_at(offset))
-                                    } else {
-                                        None
-                                    };
-                                    if next_char == Some(ch) {
-                                        Some(ch)
-                                    } else {
-                                        None
-                                    }
-                                }
-                                _ => None,
-                            } {
-                                // Skip over existing closing bracket
-                                doc.move_cursor_right(false);
-                            } else {
-                                doc.insert_text(text);
-                                modified = true;
-                            }
-                        } else {
-                            doc.insert_text(text);
-                            modified = true;
-                        }
+                        handle_text_input(
+                            text,
+                            doc,
+                            &mut modified,
+                            is_recording,
+                            &mut pending_macro_actions,
+                        );
                     }
                 }
                 _ => {}
             }
         }
-    });
+    }
 
     // Record collected macro actions
     for action in pending_macro_actions {
@@ -1420,6 +1121,529 @@ fn handle_keyboard_input(ui: &mut Ui, doc: &mut Document, macro_rec: &mut MacroR
     }
 
     modified
+}
+
+/// Convert an egui key event to a string that VimState.handle_key() expects.
+/// Returns None if the key cannot be meaningfully mapped.
+fn egui_key_to_vim_str(
+    key: &egui::Key,
+    ctrl: bool,
+    shift: bool,
+    _alt: bool,
+) -> Option<String> {
+    // For Ctrl+key combos, return "Ctrl+x" format
+    if ctrl {
+        let base = match key {
+            egui::Key::R => Some("r"),
+            egui::Key::F => Some("f"),
+            egui::Key::B => Some("b"),
+            egui::Key::D => Some("d"),
+            egui::Key::U => Some("u"),
+            _ => None,
+        };
+        if let Some(b) = base {
+            let letter = if shift {
+                b.to_uppercase()
+            } else {
+                b.to_string()
+            };
+            return Some(format!("Ctrl+{}", letter));
+        }
+        // Let Ctrl+other keys pass through to normal editor handling
+        return None;
+    }
+
+    match key {
+        egui::Key::Escape => Some("Escape".to_string()),
+        egui::Key::Enter => Some("Enter".to_string()),
+        egui::Key::Backspace => Some("Backspace".to_string()),
+        egui::Key::Delete => Some("Delete".to_string()),
+        egui::Key::Tab => Some("Tab".to_string()),
+        egui::Key::ArrowLeft => Some("ArrowLeft".to_string()),
+        egui::Key::ArrowRight => Some("ArrowRight".to_string()),
+        egui::Key::ArrowUp => Some("ArrowUp".to_string()),
+        egui::Key::ArrowDown => Some("ArrowDown".to_string()),
+        egui::Key::Home => Some("Home".to_string()),
+        egui::Key::End => Some("End".to_string()),
+        egui::Key::PageUp => Some("PageUp".to_string()),
+        egui::Key::PageDown => Some("PageDown".to_string()),
+        // Single character keys: only return them for non-printable/special purposes.
+        // For printable chars, vim gets them via Text events instead, which handles
+        // shift properly (e.g., shift+a = "A", shift+4 = "$").
+        // But we do need Escape, Enter, etc. from Key events since they don't
+        // generate Text events.
+        _ => None,
+    }
+}
+
+/// Handle a single editor key event (normal non-vim processing).
+/// Extracted to avoid duplication between vim insert-mode passthrough and non-vim mode.
+fn handle_editor_key(
+    key: &egui::Key,
+    ctrl: bool,
+    shift: bool,
+    alt: bool,
+    key_name: &str,
+    doc: &mut Document,
+    modified: &mut bool,
+    copy_text: &mut Option<String>,
+    is_recording: bool,
+    pending_macro_actions: &mut Vec<MacroAction>,
+    page_size: usize,
+) {
+    match key {
+        // Clipboard
+        egui::Key::C if ctrl => {
+            let text = doc.selected_text();
+            if !text.is_empty() {
+                *copy_text = Some(text);
+            }
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::X if ctrl => {
+            let text = doc.selected_text();
+            if !text.is_empty() {
+                *copy_text = Some(text);
+                doc.delete_selection_public();
+                *modified = true;
+            }
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        // Line operations
+        egui::Key::ArrowUp if alt => {
+            doc.move_line_up();
+            *modified = true;
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::ArrowDown if alt => {
+            doc.move_line_down();
+            *modified = true;
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::K if ctrl && shift => {
+            doc.delete_line();
+            *modified = true;
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        // Navigation
+        egui::Key::ArrowLeft if ctrl => {
+            doc.move_cursor_word_left(shift);
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::ArrowRight if ctrl => {
+            doc.move_cursor_word_right(shift);
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::ArrowLeft => {
+            doc.move_cursor_left(shift);
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::ArrowRight => {
+            doc.move_cursor_right(shift);
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::ArrowUp => {
+            doc.move_cursor_up(shift);
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::ArrowDown => {
+            doc.move_cursor_down(shift);
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::Home if ctrl => {
+            doc.move_cursor_doc_start(shift);
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::End if ctrl => {
+            doc.move_cursor_doc_end(shift);
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::Home => {
+            doc.move_cursor_home(shift);
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::End => {
+            doc.move_cursor_end(shift);
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::PageUp => {
+            doc.move_cursor_page_up(page_size, shift);
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::PageDown => {
+            doc.move_cursor_page_down(page_size, shift);
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        // Editing
+        egui::Key::Backspace if ctrl => {
+            doc.delete_word_left();
+            *modified = true;
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::Backspace => {
+            doc.backspace();
+            *modified = true;
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::Delete if ctrl => {
+            doc.delete_word_right();
+            *modified = true;
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::Delete => {
+            doc.delete_forward();
+            *modified = true;
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::Enter => {
+            doc.insert_newline_with_indent();
+            *modified = true;
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::Tab if shift => {
+            doc.unindent();
+            *modified = true;
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::Tab => {
+            doc.insert_text("    ");
+            *modified = true;
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        // Selection/undo
+        egui::Key::A if ctrl => {
+            doc.select_all();
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::Z if ctrl && shift => {
+            doc.redo();
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::Z if ctrl => {
+            doc.undo();
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::Y if ctrl => {
+            doc.redo();
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::Slash if ctrl => {
+            doc.toggle_comment();
+            *modified = true;
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::D if ctrl => {
+            doc.select_next_occurrence();
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        egui::Key::L if ctrl && shift => {
+            doc.select_all_occurrences();
+        }
+        egui::Key::Escape => {
+            if doc.cursors.cursor_count() > 1 {
+                doc.cursors.clear_extra_cursors();
+            }
+            if is_recording {
+                pending_macro_actions.push(MacroAction::KeyAction {
+                    key: key_name.to_string(),
+                    ctrl,
+                    shift,
+                    alt,
+                });
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Handle text input (bracket auto-close etc.) extracted for reuse.
+fn handle_text_input(
+    text: &str,
+    doc: &mut Document,
+    modified: &mut bool,
+    is_recording: bool,
+    pending_macro_actions: &mut Vec<MacroAction>,
+) {
+    if is_recording {
+        pending_macro_actions.push(MacroAction::InsertText(text.to_string()));
+    }
+    // Bracket auto-close
+    if text.len() == 1 {
+        let ch = text.chars().next().unwrap();
+        if let Some(close) = match ch {
+            '(' => Some(')'),
+            '[' => Some(']'),
+            '{' => Some('}'),
+            '"' => Some('"'),
+            '\'' => Some('\''),
+            _ => None,
+        } {
+            // If the character after cursor is the same closing char, skip it
+            let cursor = doc.cursors.primary();
+            let offset = doc
+                .buffer
+                .line_col_to_char(cursor.position.line, cursor.position.col);
+            let next_char = if offset < doc.buffer.len_chars() {
+                Some(doc.buffer.char_at(offset))
+            } else {
+                None
+            };
+
+            // For quotes, skip if next char is the same quote
+            if (ch == '"' || ch == '\'') && next_char == Some(ch) {
+                // Just move cursor past the existing closing char
+                doc.move_cursor_right(false);
+                *modified = true;
+            } else if ch == close && next_char == Some(close) {
+                // Skip over existing closing bracket
+                doc.move_cursor_right(false);
+                *modified = true;
+            } else {
+                // Insert open + close, cursor between them
+                let pair = format!("{}{}", ch, close);
+                doc.insert_text(&pair);
+                doc.move_cursor_left(false);
+                *modified = true;
+            }
+        } else if let Some(_) = match ch {
+            ')' | ']' | '}' => {
+                let cursor = doc.cursors.primary();
+                let offset = doc
+                    .buffer
+                    .line_col_to_char(cursor.position.line, cursor.position.col);
+                let next_char = if offset < doc.buffer.len_chars() {
+                    Some(doc.buffer.char_at(offset))
+                } else {
+                    None
+                };
+                if next_char == Some(ch) {
+                    Some(ch)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        } {
+            // Skip over existing closing bracket
+            doc.move_cursor_right(false);
+        } else {
+            doc.insert_text(text);
+            *modified = true;
+        }
+    } else {
+        doc.insert_text(text);
+        *modified = true;
+    }
 }
 
 /// Find the matching bracket for the character at or before the cursor position.

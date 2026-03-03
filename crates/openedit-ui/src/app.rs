@@ -1877,6 +1877,11 @@ impl eframe::App for OpenEditApp {
                     };
 
                     if let Some(doc) = self.documents.get_mut(self.active_tab) {
+                        let vim = if self.vim_state.enabled {
+                            Some(&mut self.vim_state)
+                        } else {
+                            None
+                        };
                         editor_view::render_editor(
                             &mut zen_ui,
                             doc,
@@ -1891,6 +1896,7 @@ impl eframe::App for OpenEditApp {
                             self.word_wrap,
                             &mut self.macro_recorder,
                             Some(&render_context),
+                            vim,
                         );
                     }
 
@@ -2367,6 +2373,11 @@ impl eframe::App for OpenEditApp {
                                 .layout(egui::Layout::top_down(egui::Align::LEFT)),
                         );
                         if let Some(doc) = self.documents.get_mut(self.active_tab) {
+                            let vim = if self.vim_state.enabled {
+                                Some(&mut self.vim_state)
+                            } else {
+                                None
+                            };
                             editor_view::render_editor(
                                 &mut pane1_ui,
                                 doc,
@@ -2381,6 +2392,7 @@ impl eframe::App for OpenEditApp {
                                 self.word_wrap,
                                 &mut self.macro_recorder,
                                 Some(&render_context),
+                                vim,
                             );
                         }
                     }
@@ -2407,6 +2419,7 @@ impl eframe::App for OpenEditApp {
                                 self.word_wrap,
                                 &mut self.macro_recorder,
                                 Some(&render_context),
+                                None,
                             );
                         }
                     }
@@ -2440,6 +2453,11 @@ impl eframe::App for OpenEditApp {
                     let source_for_preview;
                     if let Some(doc) = self.documents.get_mut(self.active_tab) {
                         source_for_preview = doc.buffer.to_string();
+                        let vim = if self.vim_state.enabled {
+                            Some(&mut self.vim_state)
+                        } else {
+                            None
+                        };
                         editor_view::render_editor(
                             &mut editor_ui,
                             doc,
@@ -2454,6 +2472,7 @@ impl eframe::App for OpenEditApp {
                             self.word_wrap,
                             &mut self.macro_recorder,
                             Some(&render_context),
+                            vim,
                         );
                     } else {
                         source_for_preview = String::new();
@@ -2479,6 +2498,11 @@ impl eframe::App for OpenEditApp {
                             .layout(egui::Layout::top_down(egui::Align::LEFT)),
                     );
                     if let Some(doc) = self.documents.get_mut(self.active_tab) {
+                        let vim = if self.vim_state.enabled {
+                            Some(&mut self.vim_state)
+                        } else {
+                            None
+                        };
                         let was_modified = editor_view::render_editor(
                             &mut editor_ui,
                             doc,
@@ -2493,6 +2517,7 @@ impl eframe::App for OpenEditApp {
                             self.word_wrap,
                             &mut self.macro_recorder,
                             Some(&render_context),
+                            vim,
                         );
                         if was_modified {
                             // Trigger debounced LSP didChange and request completions
