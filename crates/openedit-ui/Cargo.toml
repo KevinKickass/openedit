@@ -28,3 +28,4 @@ portable-pty.workspace = true
 git2.workspace = true
 url.workspace = true
 quick-xml.workspace = true
+ureq.workspace = true

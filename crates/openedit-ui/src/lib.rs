@@ -28,6 +28,7 @@ pub mod tab_bar;
 pub mod terminal;
 pub mod theme;
 pub mod theme_import;
+pub mod updater;
 pub mod vim;
 
 pub use app::OpenEditApp;

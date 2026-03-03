@@ -76,6 +76,9 @@ git2 = "0.19"
 # URL handling (for LSP URIs)
 url = "2"
 
+# HTTP client (lightweight, blocking)
+ureq = "3"
+
 [package]
 name = "openedit"
 version.workspace = true
