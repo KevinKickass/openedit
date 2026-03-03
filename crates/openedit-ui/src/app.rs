@@ -21,6 +21,7 @@ use crate::status_bar;
 use crate::tab_bar;
 use crate::terminal::TerminalState;
 use crate::theme::{EditorTheme, ThemeRegistry};
+use crate::updater::{self, UpdaterState};
 use crate::vim::VimState;
 use eframe::egui;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
@@ -179,6 +180,8 @@ pub struct OpenEditApp {
     last_active_tab: usize,
     /// Plugin management panel state.
     plugin_panel_state: PluginPanelState,
+    /// Auto-updater state.
+    updater_state: UpdaterState,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -329,6 +332,7 @@ impl OpenEditApp {
             plugin_status_message_time: None,
             last_active_tab: 0,
             plugin_panel_state: PluginPanelState::default(),
+            updater_state: UpdaterState::default(),
         };
 
         // Load external plugins from config directory
@@ -355,6 +359,9 @@ impl OpenEditApp {
                 app.documents.push(Document::new());
             }
         }
+
+        // Kick off a background update check on startup
+        app.updater_state.check_for_updates();
 
         app
     }
@@ -1548,6 +1555,10 @@ impl OpenEditApp {
                     self.plugin_status_message = Some(msg);
                 }
                 self.plugin_status_message_time = Some(std::time::Instant::now());
+            }
+            // Check for updates
+            "help.check_for_updates" => {
+                self.updater_state.check_for_updates();
             }
             // Route plugin commands (prefixed with "plugin.")
             cmd if cmd.starts_with("plugin.") => {
@@ -4344,6 +4355,9 @@ impl eframe::App for OpenEditApp {
                 self.plugin_status_message_time = None;
             }
         }
+
+        // Auto-update notification toast
+        updater::render_update_toast(ctx, &mut self.updater_state);
 
         // About dialog
         if self.show_about {

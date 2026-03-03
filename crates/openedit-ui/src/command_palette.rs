@@ -582,6 +582,12 @@ pub fn all_commands() -> Vec<Command> {
             label: "Theme: Reload User Themes".into(),
             shortcut: "",
         },
+        // Updates
+        Command {
+            id: "help.check_for_updates".into(),
+            label: "Check for Updates".into(),
+            shortcut: "",
+        },
         // Plugins
         Command {
             id: "plugins.manage".into(),
