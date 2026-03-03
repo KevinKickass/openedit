@@ -120,6 +120,16 @@ pub fn all_commands() -> Vec<Command> {
             shortcut: "Ctrl+Shift+O",
         },
         Command {
+            id: "nav.go_to_definition",
+            label: "Go to Definition",
+            shortcut: "F12",
+        },
+        Command {
+            id: "nav.hover_info",
+            label: "Show Hover Information",
+            shortcut: "",
+        },
+        Command {
             id: "nav.find",
             label: "Find",
             shortcut: "Ctrl+F",
