@@ -99,6 +99,7 @@ impl<'a> Default for PluginContext<'a> {
 }
 
 /// Result of a plugin text transformation.
+#[derive(Debug)]
 pub enum PluginAction {
     /// Do nothing.
     None,

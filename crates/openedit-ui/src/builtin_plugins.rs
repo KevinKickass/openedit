@@ -220,8 +220,7 @@ mod tests {
         let text = "Hello world, this is a test.";
         let ctx = PluginContext {
             active_text: Some(text),
-            active_path: None,
-            selection: None,
+            ..PluginContext::default()
         };
         let action = plugin.execute_command("builtin.word_counter.show_count", &ctx);
         match action {
@@ -235,11 +234,7 @@ mod tests {
     #[test]
     fn test_word_counter_empty() {
         let mut plugin = WordCounterPlugin::new();
-        let ctx = PluginContext {
-            active_text: None,
-            active_path: None,
-            selection: None,
-        };
+        let ctx = PluginContext::default();
         let action = plugin.execute_command("builtin.word_counter.show_count", &ctx);
         match action {
             PluginAction::ShowMessage(msg) => {
@@ -255,11 +250,7 @@ mod tests {
         assert_eq!(plugin.info().id, "builtin.lorem_ipsum");
         assert_eq!(plugin.commands().len(), 2);
 
-        let ctx = PluginContext {
-            active_text: None,
-            active_path: None,
-            selection: None,
-        };
+        let ctx = PluginContext::default();
         let action = plugin.execute_command("builtin.lorem_ipsum.insert_sentence", &ctx);
         match action {
             PluginAction::InsertAtCursor(text) => {
@@ -272,11 +263,7 @@ mod tests {
     #[test]
     fn test_lorem_ipsum_paragraph() {
         let mut plugin = LoremIpsumPlugin::new();
-        let ctx = PluginContext {
-            active_text: None,
-            active_path: None,
-            selection: None,
-        };
+        let ctx = PluginContext::default();
         let action = plugin.execute_command("builtin.lorem_ipsum.insert_paragraph", &ctx);
         match action {
             PluginAction::InsertAtCursor(text) => {
@@ -293,11 +280,7 @@ mod tests {
         assert_eq!(plugin.info().id, "builtin.timestamp");
         assert_eq!(plugin.commands().len(), 2);
 
-        let ctx = PluginContext {
-            active_text: None,
-            active_path: None,
-            selection: None,
-        };
+        let ctx = PluginContext::default();
 
         // Test ISO timestamp
         let action = plugin.execute_command("builtin.timestamp.insert_iso", &ctx);
@@ -343,11 +326,7 @@ mod tests {
         assert_eq!(cmds.len(), 5);
 
         // Execute a lorem ipsum command
-        let ctx = PluginContext {
-            active_text: None,
-            active_path: None,
-            selection: None,
-        };
+        let ctx = PluginContext::default();
         let action = mgr.execute_command(
             "builtin.lorem_ipsum",
             "builtin.lorem_ipsum.insert_sentence",

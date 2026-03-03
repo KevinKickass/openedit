@@ -1521,7 +1521,176 @@ impl OpenEditApp {
                     self.open_file(path);
                 }
             }
+            // Plugin management commands
+            "plugins.list" => {
+                let list = self.plugin_manager.list();
+                if list.is_empty() {
+                    self.plugin_status_message = Some("No plugins installed".into());
+                } else {
+                    let mut msg = String::from("Installed plugins:\n");
+                    for (info, enabled) in &list {
+                        let status = if *enabled { "enabled" } else { "disabled" };
+                        msg.push_str(&format!(
+                            "  {} v{} [{}] - {}\n",
+                            info.name, info.version, status, info.description
+                        ));
+                    }
+                    self.plugin_status_message = Some(msg);
+                }
+                self.plugin_status_message_time = Some(std::time::Instant::now());
+            }
+            // Route plugin commands (prefixed with "plugin.")
+            cmd if cmd.starts_with("plugin.") => {
+                self.execute_plugin_command(cmd);
+            }
             _ => {}
+        }
+    }
+
+    /// Build a PluginContext from the current editor state.
+    fn build_plugin_context(&self) -> (
+        Option<String>,  // active_text_owned
+        Option<String>,  // active_path_owned
+        Option<String>,  // selected_text_owned
+        Option<String>,  // file_name_owned
+        Option<String>,  // language_owned
+        Option<(usize, usize)>, // selection
+        usize,           // cursor_line
+        usize,           // cursor_col
+        usize,           // line_count
+        bool,            // is_modified
+    ) {
+        if let Some(doc) = self.documents.get(self.active_tab) {
+            let text = doc.buffer.to_string();
+            let path = doc.path.as_ref().map(|p| p.to_string_lossy().into_owned());
+            let cursor = doc.cursors.primary();
+            let sel = cursor.selection_range().map(|(start, end)| {
+                let start_off = doc.buffer.line_col_to_char(start.line, start.col);
+                let end_off = doc.buffer.line_col_to_char(end.line, end.col);
+                (start_off, end_off)
+            });
+            let selected = if cursor.has_selection() {
+                let s = doc.selected_text();
+                if s.is_empty() { None } else { Some(s) }
+            } else {
+                None
+            };
+            let file_name = doc.path.as_ref()
+                .and_then(|p| p.file_name())
+                .map(|n| n.to_string_lossy().into_owned());
+            let language = doc.language.clone();
+            let line_count = doc.buffer.len_lines();
+            let is_modified = doc.modified;
+            (
+                Some(text), path, selected, file_name, language,
+                sel, cursor.position.line, cursor.position.col,
+                line_count, is_modified,
+            )
+        } else {
+            (None, None, None, None, None, None, 0, 0, 0, false)
+        }
+    }
+
+    /// Execute a plugin command routed from the command palette.
+    ///
+    /// Command IDs have the format: "plugin.{plugin_id}.{command_id}"
+    fn execute_plugin_command(&mut self, full_cmd_id: &str) {
+        // Strip the "plugin." prefix
+        let rest = &full_cmd_id["plugin.".len()..];
+
+        // Find the plugin_id.command_id split by looking up which plugin owns this
+        // The format is "plugin.{plugin_id}.{command_id}" but plugin_id may contain dots.
+        // Use all_commands() to find the matching entry.
+        let mut found_plugin_id = None;
+        let mut found_cmd_id = None;
+        for (plugin_id, pcmd) in self.plugin_manager.all_commands() {
+            let expected_rest = format!("{}.{}", plugin_id, pcmd.id);
+            if rest == expected_rest {
+                found_plugin_id = Some(plugin_id);
+                found_cmd_id = Some(pcmd.id);
+                break;
+            }
+        }
+
+        let (plugin_id, cmd_id) = match (found_plugin_id, found_cmd_id) {
+            (Some(pid), Some(cid)) => (pid, cid),
+            _ => return,
+        };
+
+        // Build PluginContext from current document state
+        let (
+            active_text_owned, active_path_owned, selected_text_owned,
+            file_name_owned, language_owned, selection,
+            cursor_line, cursor_col, line_count, is_modified,
+        ) = self.build_plugin_context();
+
+        let tab_count = self.documents.len();
+
+        let ctx = PluginContext {
+            active_text: active_text_owned.as_deref(),
+            active_path: active_path_owned.as_deref(),
+            selection,
+            selected_text: selected_text_owned.as_deref(),
+            cursor_line,
+            cursor_col,
+            language: language_owned.as_deref(),
+            line_count,
+            file_name: file_name_owned.as_deref(),
+            is_modified,
+            tab_count,
+            editor_version: env!("CARGO_PKG_VERSION"),
+        };
+
+        let action = self.plugin_manager.execute_command(&plugin_id, &cmd_id, &ctx);
+        self.apply_plugin_action(action);
+    }
+
+    /// Apply a PluginAction returned from a plugin command execution.
+    fn apply_plugin_action(&mut self, action: PluginAction) {
+        match action {
+            PluginAction::None => {}
+            PluginAction::ShowMessage(msg) | PluginAction::SetStatusMessage(msg) => {
+                self.plugin_status_message = Some(msg);
+                self.plugin_status_message_time = Some(std::time::Instant::now());
+            }
+            PluginAction::InsertAtCursor(text) => {
+                if let Some(doc) = self.documents.get_mut(self.active_tab) {
+                    doc.insert_text(&text);
+                }
+            }
+            PluginAction::ReplaceSelection(text) => {
+                if let Some(doc) = self.documents.get_mut(self.active_tab) {
+                    if doc.cursors.primary().has_selection() {
+                        doc.delete_selection_public();
+                    }
+                    doc.insert_text(&text);
+                }
+            }
+            PluginAction::ReplaceAll(text) => {
+                if let Some(doc) = self.documents.get_mut(self.active_tab) {
+                    doc.select_all();
+                    doc.delete_selection_public();
+                    doc.insert_text(&text);
+                    doc.cursors.primary_mut().move_to(
+                        openedit_core::Position::zero(),
+                        false,
+                    );
+                }
+            }
+            PluginAction::OpenFile(path) => {
+                self.open_file(PathBuf::from(path));
+            }
+            PluginAction::RunCommand(cmd_id) => {
+                // Avoid infinite recursion: don't allow RunCommand to re-enter plugin commands
+                if !cmd_id.starts_with("plugin.") {
+                    self.execute_command(&cmd_id);
+                }
+            }
+            PluginAction::Multiple(actions) => {
+                for a in actions {
+                    self.apply_plugin_action(a);
+                }
+            }
         }
     }
 
@@ -4101,6 +4270,32 @@ impl eframe::App for OpenEditApp {
             }
         }
 
+        // Plugin status message toast (shown for 4 seconds)
+        if let Some(ref msg) = self.plugin_status_message.clone() {
+            let elapsed = self
+                .plugin_status_message_time
+                .map(|t| t.elapsed().as_secs_f32())
+                .unwrap_or(10.0);
+            if elapsed < 4.0 {
+                egui::Window::new("plugin_status_toast")
+                    .title_bar(false)
+                    .collapsible(false)
+                    .resizable(false)
+                    .anchor(egui::Align2::CENTER_BOTTOM, [0.0, -70.0])
+                    .show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(msg)
+                                    .color(egui::Color32::from_rgb(200, 200, 200)),
+                            );
+                        });
+                    });
+            } else {
+                self.plugin_status_message = None;
+                self.plugin_status_message_time = None;
+            }
+        }
+
         // About dialog
         if self.show_about {
             let mut open = self.show_about;
@@ -4289,6 +4484,13 @@ fn apply_text_tool(doc: &mut Document, tool_id: &str) {
             // Move cursor to start
             doc.cursors.primary_mut().move_to(Position::zero(), false);
         }
+    }
+}
+
+impl Drop for OpenEditApp {
+    fn drop(&mut self) {
+        // Broadcast Shutdown event and cleanly unload all plugins
+        self.plugin_manager.shutdown();
     }
 }
 
