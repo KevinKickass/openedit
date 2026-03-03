@@ -123,7 +123,7 @@
 - [x] Export to HTML
 - [x] Support GitHub Flavored Markdown (GFM): tables, task lists, strikethrough
 - [x] Image preview (inline, from relative paths or URLs)
-- [ ] Mermaid diagram rendering (stretch goal)
+- [x] Mermaid diagram rendering (flowchart + sequence diagrams via egui Painter)
 - [x] Use `pulldown-cmark` crate for parsing
 
 ### Find in Files
