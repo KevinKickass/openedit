@@ -262,15 +262,14 @@ impl GitManager {
     /// Returns Ok(()) on success, Err with a message on failure.
     pub fn stage_file(&mut self, file_path: &Path) -> Result<(), String> {
         let repo = self.open_repo().ok_or("No git repository found")?;
-        let root = self
-            .repo_root
-            .as_ref()
-            .ok_or("No repository root")?;
+        let root = self.repo_root.as_ref().ok_or("No repository root")?;
         let rel_path = file_path
             .strip_prefix(root)
             .map_err(|_| "File is not within the repository")?;
 
-        let mut index = repo.index().map_err(|e| format!("Failed to read index: {}", e))?;
+        let mut index = repo
+            .index()
+            .map_err(|e| format!("Failed to read index: {}", e))?;
         index
             .add_path(rel_path)
             .map_err(|e| format!("Failed to stage file: {}", e))?;
@@ -288,7 +287,9 @@ impl GitManager {
     pub fn commit(&mut self, message: &str) -> Result<String, String> {
         let repo = self.open_repo().ok_or("No git repository found")?;
 
-        let mut index = repo.index().map_err(|e| format!("Failed to read index: {}", e))?;
+        let mut index = repo
+            .index()
+            .map_err(|e| format!("Failed to read index: {}", e))?;
         let tree_oid = index
             .write_tree()
             .map_err(|e| format!("Failed to write tree: {}", e))?;
@@ -296,9 +297,12 @@ impl GitManager {
             .find_tree(tree_oid)
             .map_err(|e| format!("Failed to find tree: {}", e))?;
 
-        let sig = repo
-            .signature()
-            .map_err(|e| format!("Failed to get signature (configure user.name and user.email): {}", e))?;
+        let sig = repo.signature().map_err(|e| {
+            format!(
+                "Failed to get signature (configure user.name and user.email): {}",
+                e
+            )
+        })?;
 
         // Get parent commit (HEAD), if any
         let parents: Vec<git2::Commit<'_>> = match repo.head() {
@@ -499,7 +503,16 @@ fn format_epoch(epoch: i64) -> String {
     let month_days: [i64; 12] = [
         31,
         if leap { 29 } else { 28 },
-        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
     ];
     let mut m = 0;
     for md in &month_days {

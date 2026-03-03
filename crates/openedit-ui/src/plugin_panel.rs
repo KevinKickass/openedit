@@ -55,15 +55,15 @@ fn dirs_next_base_config() -> Option<std::path::PathBuf> {
     }
     #[cfg(target_os = "macos")]
     {
-        std::env::var("HOME")
-            .ok()
-            .map(|h| std::path::PathBuf::from(h).join("Library").join("Application Support"))
+        std::env::var("HOME").ok().map(|h| {
+            std::path::PathBuf::from(h)
+                .join("Library")
+                .join("Application Support")
+        })
     }
     #[cfg(target_os = "windows")]
     {
-        std::env::var("APPDATA")
-            .ok()
-            .map(std::path::PathBuf::from)
+        std::env::var("APPDATA").ok().map(std::path::PathBuf::from)
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
@@ -110,15 +110,14 @@ pub fn render_plugin_panel(
             if plugins.is_empty() {
                 ui.vertical_centered(|ui| {
                     ui.add_space(20.0);
-                    ui.label(
-                        egui::RichText::new("No plugins installed.")
-                            .color(theme.gutter_fg),
-                    );
+                    ui.label(egui::RichText::new("No plugins installed.").color(theme.gutter_fg));
                     ui.add_space(8.0);
                     ui.label(
-                        egui::RichText::new("Place plugin crates in the plugins folder to get started.")
-                            .small()
-                            .color(theme.gutter_fg),
+                        egui::RichText::new(
+                            "Place plugin crates in the plugins folder to get started.",
+                        )
+                        .small()
+                        .color(theme.gutter_fg),
                     );
                     ui.add_space(4.0);
                     let dir = plugins_dir();
@@ -160,9 +159,12 @@ pub fn render_plugin_panel(
                                                         .color(theme.foreground),
                                                 );
                                                 ui.label(
-                                                    egui::RichText::new(format!("v{}", info.version))
-                                                        .small()
-                                                        .weak(),
+                                                    egui::RichText::new(format!(
+                                                        "v{}",
+                                                        info.version
+                                                    ))
+                                                    .small()
+                                                    .weak(),
                                                 );
                                             });
 

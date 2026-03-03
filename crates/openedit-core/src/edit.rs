@@ -5,15 +5,9 @@ use crate::cursor::{Cursor, Position};
 #[derive(Debug, Clone)]
 pub enum EditOp {
     /// Insert text at a char offset.
-    Insert {
-        offset: usize,
-        text: String,
-    },
+    Insert { offset: usize, text: String },
     /// Delete text in a char range.
-    Delete {
-        offset: usize,
-        deleted_text: String,
-    },
+    Delete { offset: usize, deleted_text: String },
     /// Replace text in a char range.
     Replace {
         offset: usize,
@@ -29,10 +23,17 @@ impl EditOp {
             EditOp::Insert { offset, text } => {
                 buffer.insert(*offset, text);
             }
-            EditOp::Delete { offset, deleted_text } => {
+            EditOp::Delete {
+                offset,
+                deleted_text,
+            } => {
                 buffer.remove(*offset..*offset + deleted_text.len());
             }
-            EditOp::Replace { offset, old_text, new_text } => {
+            EditOp::Replace {
+                offset,
+                old_text,
+                new_text,
+            } => {
                 buffer.replace(*offset..*offset + old_text.len(), new_text);
             }
         }
@@ -45,11 +46,18 @@ impl EditOp {
                 offset: *offset,
                 deleted_text: text.clone(),
             },
-            EditOp::Delete { offset, deleted_text } => EditOp::Insert {
+            EditOp::Delete {
+                offset,
+                deleted_text,
+            } => EditOp::Insert {
                 offset: *offset,
                 text: deleted_text.clone(),
             },
-            EditOp::Replace { offset, old_text, new_text } => EditOp::Replace {
+            EditOp::Replace {
+                offset,
+                old_text,
+                new_text,
+            } => EditOp::Replace {
                 offset: *offset,
                 old_text: new_text.clone(),
                 new_text: old_text.clone(),
@@ -146,11 +154,12 @@ pub fn delete_forward(buffer: &mut Buffer, cursor: &mut Cursor) {
     }
 
     let ch = buffer.char_at(offset);
-    let delete_count = if ch == '\r' && offset + 1 < buffer.len_chars() && buffer.char_at(offset + 1) == '\n' {
-        2
-    } else {
-        1
-    };
+    let delete_count =
+        if ch == '\r' && offset + 1 < buffer.len_chars() && buffer.char_at(offset + 1) == '\n' {
+            2
+        } else {
+            1
+        };
 
     buffer.remove(offset..offset + delete_count);
     // Cursor stays in place
@@ -281,7 +290,12 @@ pub fn move_cursor_down(buffer: &Buffer, cursor: &mut Cursor, extend_selection: 
     cursor.preferred_col = Some(target_col);
 }
 
-pub fn move_cursor_page_up(buffer: &Buffer, cursor: &mut Cursor, page_size: usize, extend_selection: bool) {
+pub fn move_cursor_page_up(
+    buffer: &Buffer,
+    cursor: &mut Cursor,
+    page_size: usize,
+    extend_selection: bool,
+) {
     let target_col = cursor.preferred_col.unwrap_or(cursor.position.col);
     let new_line = cursor.position.line.saturating_sub(page_size);
     let max_col = buffer.line_len_chars_no_newline(new_line);
@@ -290,7 +304,12 @@ pub fn move_cursor_page_up(buffer: &Buffer, cursor: &mut Cursor, page_size: usiz
     cursor.preferred_col = Some(target_col);
 }
 
-pub fn move_cursor_page_down(buffer: &Buffer, cursor: &mut Cursor, page_size: usize, extend_selection: bool) {
+pub fn move_cursor_page_down(
+    buffer: &Buffer,
+    cursor: &mut Cursor,
+    page_size: usize,
+    extend_selection: bool,
+) {
     let target_col = cursor.preferred_col.unwrap_or(cursor.position.col);
     let new_line = (cursor.position.line + page_size).min(buffer.len_lines().saturating_sub(1));
     let max_col = buffer.line_len_chars_no_newline(new_line);

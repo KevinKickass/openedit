@@ -137,7 +137,8 @@ impl MultiCursorState {
 
     /// Merge overlapping cursors (same position = keep one).
     fn merge_overlapping(&mut self) {
-        self.cursors.sort_by_key(|c| (c.position.line, c.position.col));
+        self.cursors
+            .sort_by_key(|c| (c.position.line, c.position.col));
         self.cursors.dedup_by(|a, b| a.position == b.position);
     }
 }

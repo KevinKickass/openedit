@@ -125,9 +125,18 @@ mod tests {
         let ops = diff_lines(left, right);
         // No common lines, so all deletes then all inserts (or interleaved)
         // Verify that we get the right counts
-        let deletes: Vec<_> = ops.iter().filter(|o| matches!(o, DiffOp::Delete(_))).collect();
-        let inserts: Vec<_> = ops.iter().filter(|o| matches!(o, DiffOp::Insert(_))).collect();
-        let equals: Vec<_> = ops.iter().filter(|o| matches!(o, DiffOp::Equal(_))).collect();
+        let deletes: Vec<_> = ops
+            .iter()
+            .filter(|o| matches!(o, DiffOp::Delete(_)))
+            .collect();
+        let inserts: Vec<_> = ops
+            .iter()
+            .filter(|o| matches!(o, DiffOp::Insert(_)))
+            .collect();
+        let equals: Vec<_> = ops
+            .iter()
+            .filter(|o| matches!(o, DiffOp::Equal(_)))
+            .collect();
         assert_eq!(deletes.len(), 2);
         assert_eq!(inserts.len(), 2);
         assert_eq!(equals.len(), 0);

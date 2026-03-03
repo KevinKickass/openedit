@@ -107,7 +107,10 @@ impl UpdaterState {
         // Poll download progress
         if let Some(ref rx) = self.download_rx {
             if let Ok(progress) = rx.try_recv() {
-                let done = matches!(progress, DownloadProgress::Done | DownloadProgress::Failed(_));
+                let done = matches!(
+                    progress,
+                    DownloadProgress::Done | DownloadProgress::Failed(_)
+                );
                 self.download_progress = Some(progress);
                 if done {
                     self.download_rx = None;
@@ -192,10 +195,7 @@ fn do_update_check() -> UpdateCheckResult {
     match compare_versions(current, &tag) {
         Some(std::cmp::Ordering::Less) => {
             // Newer version available
-            let html_url = json["html_url"]
-                .as_str()
-                .unwrap_or("")
-                .to_string();
+            let html_url = json["html_url"].as_str().unwrap_or("").to_string();
             let body = json["body"].as_str().unwrap_or("").to_string();
             let download_url = find_asset_url(&json);
 
@@ -255,12 +255,7 @@ fn compare_versions(a: &str, b: &str) -> Option<std::cmp::Ordering> {
         let minor = parts.next().unwrap_or("0").parse().ok()?;
         // Strip any pre-release suffix from patch (e.g. "1-beta" -> "1")
         let patch_str = parts.next().unwrap_or("0");
-        let patch_num = patch_str
-            .split('-')
-            .next()
-            .unwrap_or("0")
-            .parse()
-            .ok()?;
+        let patch_num = patch_str.split('-').next().unwrap_or("0").parse().ok()?;
         Some((major, minor, patch_num))
     };
     let va = parse(a)?;
@@ -285,10 +280,7 @@ fn do_download_and_replace(url: &str) -> DownloadProgress {
     let tmp_path = parent.join(".openedit-update.tmp");
 
     // Stream the download to the temp file
-    let mut response = match ureq::get(url)
-        .header("User-Agent", USER_AGENT)
-        .call()
-    {
+    let mut response = match ureq::get(url).header("User-Agent", USER_AGENT).call() {
         Ok(r) => r,
         Err(e) => return DownloadProgress::Failed(format!("Download failed: {}", e)),
     };
@@ -308,8 +300,7 @@ fn do_download_and_replace(url: &str) -> DownloadProgress {
         use std::os::unix::fs::PermissionsExt;
 
         // Make the new binary executable
-        if let Err(e) =
-            std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o755))
+        if let Err(e) = std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o755))
         {
             let _ = std::fs::remove_file(&tmp_path);
             return DownloadProgress::Failed(format!("chmod failed: {}", e));
@@ -387,20 +378,14 @@ pub fn render_update_toast(ctx: &egui::Context, state: &mut UpdaterState) {
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
                     ui.label(
-                        egui::RichText::new(format!(
-                            "Update available: v{}",
-                            info.version
-                        ))
-                        .strong()
-                        .color(egui::Color32::from_rgb(100, 200, 100)),
+                        egui::RichText::new(format!("Update available: v{}", info.version))
+                            .strong()
+                            .color(egui::Color32::from_rgb(100, 200, 100)),
                     );
                     ui.label(
-                        egui::RichText::new(format!(
-                            "Current: v{}",
-                            env!("CARGO_PKG_VERSION")
-                        ))
-                        .small()
-                        .color(egui::Color32::from_rgb(180, 180, 180)),
+                        egui::RichText::new(format!("Current: v{}", env!("CARGO_PKG_VERSION")))
+                            .small()
+                            .color(egui::Color32::from_rgb(180, 180, 180)),
                     );
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
@@ -433,37 +418,35 @@ fn render_download_progress(
         .resizable(false)
         .anchor(egui::Align2::RIGHT_BOTTOM, [-16.0, -16.0])
         .fixed_size([360.0, 0.0])
-        .show(ctx, |ui| {
-            match progress {
-                DownloadProgress::Downloading => {
-                    ui.horizontal(|ui| {
-                        ui.spinner();
-                        ui.label("Downloading update...");
-                    });
-                }
-                DownloadProgress::Done => {
-                    ui.label(
-                        egui::RichText::new("Update installed! Restart to apply.")
-                            .strong()
-                            .color(egui::Color32::from_rgb(100, 200, 100)),
-                    );
-                    ui.horizontal(|ui| {
-                        if ui.button("Dismiss").clicked() {
-                            state.dismissed = true;
-                        }
-                    });
-                }
-                DownloadProgress::Failed(msg) => {
-                    ui.label(
-                        egui::RichText::new(format!("Update failed: {}", msg))
-                            .color(egui::Color32::from_rgb(240, 100, 100)),
-                    );
-                    ui.horizontal(|ui| {
-                        if ui.button("Dismiss").clicked() {
-                            state.dismissed = true;
-                        }
-                    });
-                }
+        .show(ctx, |ui| match progress {
+            DownloadProgress::Downloading => {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label("Downloading update...");
+                });
+            }
+            DownloadProgress::Done => {
+                ui.label(
+                    egui::RichText::new("Update installed! Restart to apply.")
+                        .strong()
+                        .color(egui::Color32::from_rgb(100, 200, 100)),
+                );
+                ui.horizontal(|ui| {
+                    if ui.button("Dismiss").clicked() {
+                        state.dismissed = true;
+                    }
+                });
+            }
+            DownloadProgress::Failed(msg) => {
+                ui.label(
+                    egui::RichText::new(format!("Update failed: {}", msg))
+                        .color(egui::Color32::from_rgb(240, 100, 100)),
+                );
+                ui.horizontal(|ui| {
+                    if ui.button("Dismiss").clicked() {
+                        state.dismissed = true;
+                    }
+                });
             }
         });
 }

@@ -88,7 +88,11 @@ impl FoldingState {
     /// Check if a line is hidden due to folding.
     pub fn is_line_hidden(&self, line: usize) -> bool {
         for fold_start in &self.folded_lines {
-            if let Some(range) = self.fold_ranges.iter().find(|r| r.start_line == *fold_start) {
+            if let Some(range) = self
+                .fold_ranges
+                .iter()
+                .find(|r| r.start_line == *fold_start)
+            {
                 if line > range.start_line && line <= range.end_line {
                     return true;
                 }
@@ -138,7 +142,9 @@ impl FoldingState {
 
     /// Count the total number of visible lines.
     pub fn visible_line_count(&self, total_lines: usize) -> usize {
-        (0..total_lines).filter(|&l| !self.is_line_hidden(l)).count()
+        (0..total_lines)
+            .filter(|&l| !self.is_line_hidden(l))
+            .count()
     }
 }
 
@@ -249,10 +255,7 @@ mod tests {
 
     #[test]
     fn test_non_fold_line_toggle() {
-        let lines = vec![
-            "let x = 1;".to_string(),
-            "let y = 2;".to_string(),
-        ];
+        let lines = vec!["let x = 1;".to_string(), "let y = 2;".to_string()];
         let mut state = FoldingState::new();
         state.compute_fold_ranges(&lines);
         assert!(!state.toggle_fold(0));

@@ -26,7 +26,7 @@ pub enum MermaidDiagram {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FlowDirection {
-    TopDown, // TD / TB
+    TopDown,   // TD / TB
     LeftRight, // LR
     RightLeft, // RL
     BottomTop, // BT
@@ -34,13 +34,13 @@ pub enum FlowDirection {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NodeShape {
-    Rect,       // [text]
-    Round,      // (text)
-    Diamond,    // {text}
-    Stadium,    // ([text])
-    Hexagon,    // {{text}}
-    Cylinder,   // [(text)]
-    Default,    // plain id
+    Rect,     // [text]
+    Round,    // (text)
+    Diamond,  // {text}
+    Stadium,  // ([text])
+    Hexagon,  // {{text}}
+    Cylinder, // [(text)]
+    Default,  // plain id
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -239,7 +239,7 @@ fn contains_arrow(s: &str) -> bool {
         || s.contains("-.-")
         || s.contains("==>")
         || s.contains("===")
-        || s.contains("-->" )
+        || s.contains("-->")
 }
 
 /// Try to parse a line that contains edges (may be chained: A --> B --> C).
@@ -396,7 +396,10 @@ fn find_next_arrow(s: &str) -> Option<(&str, EdgeStyle, Option<String>, &str)> {
             return Some((&s[..i], EdgeStyle::Solid, label, &s[i + skip..]));
         }
         // -- text --> pattern (edge label between dashes and arrow)
-        if i + 2 <= len && &s[i..i + 2] == "--" && (i + 2 < len && bytes[i + 2] != b'-' && bytes[i + 2] != b'>') {
+        if i + 2 <= len
+            && &s[i..i + 2] == "--"
+            && (i + 2 < len && bytes[i + 2] != b'-' && bytes[i + 2] != b'>')
+        {
             // Check for "-- label -->" pattern
             if let Some(end_arrow) = s[i + 2..].find("-->") {
                 let label_text = s[i + 2..i + 2 + end_arrow].trim().to_string();
@@ -406,7 +409,12 @@ fn find_next_arrow(s: &str) -> Option<(&str, EdgeStyle, Option<String>, &str)> {
                     } else {
                         Some(label_text)
                     };
-                    return Some((&s[..i], EdgeStyle::Solid, label, &s[i + 2 + end_arrow + 3..]));
+                    return Some((
+                        &s[..i],
+                        EdgeStyle::Solid,
+                        label,
+                        &s[i + 2 + end_arrow + 3..],
+                    ));
                 }
             }
         }
@@ -675,9 +683,15 @@ pub fn render_mermaid(
     colors: &MermaidColors,
 ) -> f32 {
     match diagram {
-        MermaidDiagram::Flowchart(fc) => render_flowchart(painter, fc, origin, available_width, colors),
-        MermaidDiagram::Sequence(sd) => render_sequence(painter, sd, origin, available_width, colors),
-        MermaidDiagram::Unknown(src) => render_unknown(painter, src, origin, available_width, colors),
+        MermaidDiagram::Flowchart(fc) => {
+            render_flowchart(painter, fc, origin, available_width, colors)
+        }
+        MermaidDiagram::Sequence(sd) => {
+            render_sequence(painter, sd, origin, available_width, colors)
+        }
+        MermaidDiagram::Unknown(src) => {
+            render_unknown(painter, src, origin, available_width, colors)
+        }
     }
 }
 
@@ -760,7 +774,10 @@ fn render_flowchart(
     // Simple layout: assign rows and columns using topological-ish ordering.
     // For LR/RL: nodes flow left-to-right in edge order.
     // For TD/BT: nodes flow top-to-bottom.
-    let is_horizontal = matches!(fc.direction, FlowDirection::LeftRight | FlowDirection::RightLeft);
+    let is_horizontal = matches!(
+        fc.direction,
+        FlowDirection::LeftRight | FlowDirection::RightLeft
+    );
 
     // Build adjacency for topological layers
     let layers = compute_layers(&fc.nodes, &fc.edges);
@@ -784,7 +801,9 @@ fn render_flowchart(
                 let node = &fc.nodes[idx];
                 let w = node_widths[idx];
                 let cx = x + layer_width / 2.0;
-                let cy = start_y + row as f32 * (node_h + v_gap * 0.5) + total_layer_height * 0.0
+                let cy = start_y
+                    + row as f32 * (node_h + v_gap * 0.5)
+                    + total_layer_height * 0.0
                     + node_h / 2.0;
                 let r = Rect::from_center_size(Pos2::new(cx, cy), Vec2::new(w, node_h));
                 layout_nodes.push(LayoutNode {
@@ -874,7 +893,10 @@ fn compute_layers(nodes: &[FlowNode], edges: &[FlowEdge]) -> Vec<Vec<usize>> {
     let mut in_degree = vec![0usize; n];
     let mut adj: Vec<Vec<usize>> = vec![vec![]; n];
     for edge in edges {
-        if let (Some(&from), Some(&to)) = (id_to_idx.get(edge.from.as_str()), id_to_idx.get(edge.to.as_str())) {
+        if let (Some(&from), Some(&to)) = (
+            id_to_idx.get(edge.from.as_str()),
+            id_to_idx.get(edge.to.as_str()),
+        ) {
             adj[from].push(to);
             in_degree[to] += 1;
         }
@@ -1135,8 +1157,8 @@ fn render_sequence(
         .map(|p| (p.len() as f32 * char_width + 24.0).max(participant_min_w))
         .collect();
 
-    let total_width: f32 =
-        participant_widths.iter().sum::<f32>() + (sd.participants.len() as f32 - 1.0).max(0.0) * h_gap;
+    let total_width: f32 = participant_widths.iter().sum::<f32>()
+        + (sd.participants.len() as f32 - 1.0).max(0.0) * h_gap;
     let start_x = origin.x + (available_width - total_width).max(0.0) / 2.0;
 
     // Compute center x for each participant
@@ -1157,7 +1179,10 @@ fn render_sequence(
     // Background
     let bg_rect = Rect::from_min_size(
         origin,
-        Vec2::new(available_width.min(total_width + margin * 2.0), diagram_height),
+        Vec2::new(
+            available_width.min(total_width + margin * 2.0),
+            diagram_height,
+        ),
     );
     painter.rect_filled(bg_rect, 4.0, colors.background);
 
@@ -1172,7 +1197,12 @@ fn render_sequence(
             Pos2::new(cx, origin.y + margin + participant_h / 2.0),
             Vec2::new(w, participant_h),
         );
-        painter.rect(r, 4.0, colors.participant_fill, Stroke::new(2.0, colors.node_stroke));
+        painter.rect(
+            r,
+            4.0,
+            colors.participant_fill,
+            Stroke::new(2.0, colors.node_stroke),
+        );
         painter.text(
             r.center(),
             egui::Align2::CENTER_CENTER,
@@ -1204,7 +1234,12 @@ fn render_sequence(
             Pos2::new(cx, lifeline_bottom + 8.0 + participant_h / 2.0),
             Vec2::new(w, participant_h),
         );
-        painter.rect(r, 4.0, colors.participant_fill, Stroke::new(2.0, colors.node_stroke));
+        painter.rect(
+            r,
+            4.0,
+            colors.participant_fill,
+            Stroke::new(2.0, colors.node_stroke),
+        );
         painter.text(
             r.center(),
             egui::Align2::CENTER_CENTER,
@@ -1241,10 +1276,7 @@ fn render_sequence(
                         4.0,
                     );
                 } else {
-                    painter.line_segment(
-                        [Pos2::new(from_x, y), Pos2::new(to_x, y)],
-                        stroke,
-                    );
+                    painter.line_segment([Pos2::new(from_x, y), Pos2::new(to_x, y)], stroke);
                 }
 
                 // Arrowhead for >> arrows
@@ -1648,13 +1680,35 @@ mod tests {
     #[test]
     fn test_compute_layers_linear() {
         let nodes = vec![
-            FlowNode { id: "A".into(), label: "A".into(), shape: NodeShape::Default },
-            FlowNode { id: "B".into(), label: "B".into(), shape: NodeShape::Default },
-            FlowNode { id: "C".into(), label: "C".into(), shape: NodeShape::Default },
+            FlowNode {
+                id: "A".into(),
+                label: "A".into(),
+                shape: NodeShape::Default,
+            },
+            FlowNode {
+                id: "B".into(),
+                label: "B".into(),
+                shape: NodeShape::Default,
+            },
+            FlowNode {
+                id: "C".into(),
+                label: "C".into(),
+                shape: NodeShape::Default,
+            },
         ];
         let edges = vec![
-            FlowEdge { from: "A".into(), to: "B".into(), label: None, style: EdgeStyle::Solid },
-            FlowEdge { from: "B".into(), to: "C".into(), label: None, style: EdgeStyle::Solid },
+            FlowEdge {
+                from: "A".into(),
+                to: "B".into(),
+                label: None,
+                style: EdgeStyle::Solid,
+            },
+            FlowEdge {
+                from: "B".into(),
+                to: "C".into(),
+                label: None,
+                style: EdgeStyle::Solid,
+            },
         ];
         let layers = compute_layers(&nodes, &edges);
         assert_eq!(layers.len(), 3);
@@ -1666,13 +1720,35 @@ mod tests {
     #[test]
     fn test_compute_layers_branching() {
         let nodes = vec![
-            FlowNode { id: "A".into(), label: "A".into(), shape: NodeShape::Default },
-            FlowNode { id: "B".into(), label: "B".into(), shape: NodeShape::Default },
-            FlowNode { id: "C".into(), label: "C".into(), shape: NodeShape::Default },
+            FlowNode {
+                id: "A".into(),
+                label: "A".into(),
+                shape: NodeShape::Default,
+            },
+            FlowNode {
+                id: "B".into(),
+                label: "B".into(),
+                shape: NodeShape::Default,
+            },
+            FlowNode {
+                id: "C".into(),
+                label: "C".into(),
+                shape: NodeShape::Default,
+            },
         ];
         let edges = vec![
-            FlowEdge { from: "A".into(), to: "B".into(), label: None, style: EdgeStyle::Solid },
-            FlowEdge { from: "A".into(), to: "C".into(), label: None, style: EdgeStyle::Solid },
+            FlowEdge {
+                from: "A".into(),
+                to: "B".into(),
+                label: None,
+                style: EdgeStyle::Solid,
+            },
+            FlowEdge {
+                from: "A".into(),
+                to: "C".into(),
+                label: None,
+                style: EdgeStyle::Solid,
+            },
         ];
         let layers = compute_layers(&nodes, &edges);
         assert_eq!(layers.len(), 2);
@@ -1683,8 +1759,16 @@ mod tests {
     #[test]
     fn test_compute_layers_disconnected() {
         let nodes = vec![
-            FlowNode { id: "A".into(), label: "A".into(), shape: NodeShape::Default },
-            FlowNode { id: "B".into(), label: "B".into(), shape: NodeShape::Default },
+            FlowNode {
+                id: "A".into(),
+                label: "A".into(),
+                shape: NodeShape::Default,
+            },
+            FlowNode {
+                id: "B".into(),
+                label: "B".into(),
+                shape: NodeShape::Default,
+            },
         ];
         let edges: Vec<FlowEdge> = vec![];
         let layers = compute_layers(&nodes, &edges);
@@ -1754,7 +1838,8 @@ mod tests {
 
     #[test]
     fn test_parse_flowchart_multiple_edges_on_separate_lines() {
-        let src = "graph TD\n    A[Start] --> B{Decision}\n    B -->|yes| C[OK]\n    B -->|no| D[Fail]";
+        let src =
+            "graph TD\n    A[Start] --> B{Decision}\n    B -->|yes| C[OK]\n    B -->|no| D[Fail]";
         let diagram = parse_mermaid(src);
         match diagram {
             MermaidDiagram::Flowchart(fc) => {

@@ -31,7 +31,11 @@ pub enum EditorEvent {
     /// The active tab changed. Contains the new file path (if any).
     TabChanged(Option<String>),
     /// Text was inserted at (line, col) with given content.
-    TextInserted { line: usize, col: usize, text: String },
+    TextInserted {
+        line: usize,
+        col: usize,
+        text: String,
+    },
     /// Text was deleted at (line, col) with given length.
     TextDeleted { line: usize, col: usize, len: usize },
     /// Editor is starting up.
@@ -217,7 +221,12 @@ impl PluginManager {
     }
 
     /// Execute a command on the appropriate plugin.
-    pub fn execute_command(&mut self, plugin_id: &str, command_id: &str, ctx: &PluginContext) -> PluginAction {
+    pub fn execute_command(
+        &mut self,
+        plugin_id: &str,
+        command_id: &str,
+        ctx: &PluginContext,
+    ) -> PluginAction {
         for i in 0..self.plugins.len() {
             let id = self.plugins[i].info().id.clone();
             if id == plugin_id && self.enabled.get(&id).copied().unwrap_or(false) {
@@ -276,7 +285,10 @@ mod tests {
 
     impl TestPlugin {
         fn new() -> Self {
-            Self { loaded: false, events: Vec::new() }
+            Self {
+                loaded: false,
+                events: Vec::new(),
+            }
         }
     }
 

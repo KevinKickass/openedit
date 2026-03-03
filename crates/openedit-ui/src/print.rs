@@ -206,8 +206,7 @@ pub fn generate_pdf(
         });
 
         // ── Body text ──
-        let body_start_y_mm =
-            page_h - margin_top - (header_height_pt * 25.4 / 72.0);
+        let body_start_y_mm = page_h - margin_top - (header_height_pt * 25.4 / 72.0);
         let text_x_mm = margin_left + gutter_w;
 
         for (i, line_offset) in (start_line..end_line).enumerate() {
@@ -215,7 +214,11 @@ pub fn generate_pdf(
 
             // Draw line number
             if config.line_numbers {
-                let line_num_str = format!("{:>width$}  ", line_offset + 1, width = format!("{}", total_lines).len().max(3));
+                let line_num_str = format!(
+                    "{:>width$}  ",
+                    line_offset + 1,
+                    width = format!("{}", total_lines).len().max(3)
+                );
                 ops.push(Op::SetFillColor {
                     col: Color::Rgb(Rgb::new(0.5, 0.5, 0.5, None)),
                 });
@@ -245,9 +248,8 @@ pub fn generate_pdf(
             // Replace tabs with spaces for PDF rendering
             let line_text = line_text.replace('\t', "    ");
 
-            let use_highlighting = config.syntax_highlighting
-                && highlight_spans.is_some()
-                && syntax_colors.is_some();
+            let use_highlighting =
+                config.syntax_highlighting && highlight_spans.is_some() && syntax_colors.is_some();
 
             if use_highlighting {
                 let spans_list = highlight_spans.unwrap();
@@ -462,10 +464,7 @@ pub fn open_with_system(path: &std::path::Path) -> Result<(), String> {
 
 /// Render the print dialog. Returns `Some(true)` if the user clicked Print/Export,
 /// `Some(false)` if cancelled, or `None` if the dialog is still open.
-pub fn render_print_dialog(
-    ctx: &egui::Context,
-    state: &mut PrintDialogState,
-) -> Option<bool> {
+pub fn render_print_dialog(ctx: &egui::Context, state: &mut PrintDialogState) -> Option<bool> {
     if !state.open {
         return None;
     }
@@ -499,10 +498,7 @@ pub fn render_print_dialog(
                     state.config.paper_size = PaperSize::A4;
                 }
                 if ui
-                    .selectable_label(
-                        state.config.paper_size == PaperSize::Letter,
-                        "Letter",
-                    )
+                    .selectable_label(state.config.paper_size == PaperSize::Letter, "Letter")
                     .clicked()
                 {
                     state.config.paper_size = PaperSize::Letter;
@@ -667,7 +663,11 @@ mod tests {
         // PDF files start with %PDF
         assert!(pdf.len() > 100, "PDF should have reasonable size");
         let header = String::from_utf8_lossy(&pdf[..5]);
-        assert!(header.starts_with("%PDF"), "Should be a valid PDF header, got: {}", header);
+        assert!(
+            header.starts_with("%PDF"),
+            "Should be a valid PDF header, got: {}",
+            header
+        );
     }
 
     #[test]
@@ -762,8 +762,8 @@ mod tests {
 
     #[test]
     fn test_generate_pdf_with_highlight_spans() {
-        use openedit_core::syntax::HighlightSpan;
         use crate::theme::SyntaxColors;
+        use openedit_core::syntax::HighlightSpan;
 
         let lines = vec!["fn main() {}".to_string(), "    let x = 42;".to_string()];
         let spans = vec![

@@ -113,10 +113,7 @@ mod tests {
     #[test]
     fn test_detect_mixed_prefers_majority() {
         // 2 CRLF vs 1 LF → CRLF
-        assert_eq!(
-            LineEnding::detect("a\r\nb\r\nc\n"),
-            LineEnding::CRLF
-        );
+        assert_eq!(LineEnding::detect("a\r\nb\r\nc\n"), LineEnding::CRLF);
     }
 
     #[test]

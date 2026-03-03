@@ -21,8 +21,6 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "OpenEdit",
         options,
-        Box::new(move |_cc| {
-            Ok(Box::new(openedit_ui::OpenEditApp::new(files)))
-        }),
+        Box::new(move |_cc| Ok(Box::new(openedit_ui::OpenEditApp::new(files)))),
     )
 }

@@ -405,8 +405,7 @@ pub fn render_diff_view(
     );
 
     // Draw toolbar background
-    ui.painter()
-        .rect_filled(toolbar_rect, 0.0, theme.gutter_bg);
+    ui.painter().rect_filled(toolbar_rect, 0.0, theme.gutter_bg);
 
     // Navigation buttons in toolbar
     let btn_font = egui::FontId::monospace(font_size * 0.85);
@@ -414,26 +413,17 @@ pub fn render_diff_view(
     let nav_label = if hunk_count == 0 {
         "No differences".to_string()
     } else {
-        format!(
-            "Diff {}/{} ",
-            state.current_hunk + 1,
-            hunk_count
-        )
+        format!("Diff {}/{} ", state.current_hunk + 1, hunk_count)
     };
 
     // Draw nav label
     let nav_text_pos = Pos2::new(toolbar_rect.left() + 8.0, toolbar_rect.center().y);
-    let nav_galley = ui.painter().layout_no_wrap(
-        nav_label.clone(),
-        btn_font.clone(),
-        theme.foreground,
-    );
+    let nav_galley =
+        ui.painter()
+            .layout_no_wrap(nav_label.clone(), btn_font.clone(), theme.foreground);
     let nav_text_width = nav_galley.size().x;
-    ui.painter().galley(
-        nav_text_pos,
-        nav_galley,
-        theme.foreground,
-    );
+    ui.painter()
+        .galley(nav_text_pos, nav_galley, theme.foreground);
 
     // Prev button
     let prev_btn_rect = Rect::from_min_size(
@@ -652,10 +642,7 @@ pub fn render_diff_view(
 
                 // ">" button on the left pane (copy left -> right)
                 let l2r_rect = Rect::from_min_size(
-                    Pos2::new(
-                        separator_x - merge_btn_w - 2.0,
-                        y,
-                    ),
+                    Pos2::new(separator_x - merge_btn_w - 2.0, y),
                     Vec2::new(merge_btn_w, line_height),
                 );
                 let l2r_resp = ui.allocate_rect(l2r_rect, egui::Sense::click());
@@ -821,10 +808,7 @@ mod tests {
 
     #[test]
     fn test_compute_hunks_no_diffs() {
-        let ops = vec![
-            DiffOp::Equal("a".into()),
-            DiffOp::Equal("b".into()),
-        ];
+        let ops = vec![DiffOp::Equal("a".into()), DiffOp::Equal("b".into())];
         let hunks = compute_hunks(&ops);
         assert!(hunks.is_empty());
     }
@@ -921,8 +905,16 @@ mod tests {
     fn test_navigate_next_hunk() {
         let mut state = DiffViewState::default();
         state.hunks = vec![
-            DiffHunk { row_start: 0, op_start: 0, op_end: 1 },
-            DiffHunk { row_start: 5, op_start: 3, op_end: 5 },
+            DiffHunk {
+                row_start: 0,
+                op_start: 0,
+                op_end: 1,
+            },
+            DiffHunk {
+                row_start: 5,
+                op_start: 3,
+                op_end: 5,
+            },
         ];
         state.current_hunk = 0;
         navigate_next_hunk(&mut state, 20.0);
@@ -934,8 +926,16 @@ mod tests {
     fn test_navigate_prev_hunk_wraps() {
         let mut state = DiffViewState::default();
         state.hunks = vec![
-            DiffHunk { row_start: 0, op_start: 0, op_end: 1 },
-            DiffHunk { row_start: 10, op_start: 3, op_end: 5 },
+            DiffHunk {
+                row_start: 0,
+                op_start: 0,
+                op_end: 1,
+            },
+            DiffHunk {
+                row_start: 10,
+                op_start: 3,
+                op_end: 5,
+            },
         ];
         state.current_hunk = 0;
         navigate_prev_hunk(&mut state, 20.0);
@@ -947,8 +947,16 @@ mod tests {
     fn test_navigate_next_hunk_wraps() {
         let mut state = DiffViewState::default();
         state.hunks = vec![
-            DiffHunk { row_start: 0, op_start: 0, op_end: 1 },
-            DiffHunk { row_start: 5, op_start: 3, op_end: 5 },
+            DiffHunk {
+                row_start: 0,
+                op_start: 0,
+                op_end: 1,
+            },
+            DiffHunk {
+                row_start: 5,
+                op_start: 3,
+                op_end: 5,
+            },
         ];
         state.current_hunk = 1;
         navigate_next_hunk(&mut state, 20.0);

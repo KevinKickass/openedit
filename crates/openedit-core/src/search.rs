@@ -130,10 +130,7 @@ impl SearchEngine {
         }
 
         // Find the first match after from_offset
-        let idx = self
-            .matches
-            .iter()
-            .position(|m| m.start >= from_offset);
+        let idx = self.matches.iter().position(|m| m.start >= from_offset);
 
         let idx = match idx {
             Some(i) => i,
@@ -151,10 +148,7 @@ impl SearchEngine {
             return None;
         }
 
-        let idx = self
-            .matches
-            .iter()
-            .rposition(|m| m.start < from_offset);
+        let idx = self.matches.iter().rposition(|m| m.start < from_offset);
 
         let idx = match idx {
             Some(i) => i,

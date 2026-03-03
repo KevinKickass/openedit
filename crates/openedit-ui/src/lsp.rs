@@ -906,7 +906,10 @@ fn parse_locations_response(result: &serde_json::Value) -> Vec<LspLocation> {
         return Vec::new();
     };
 
-    items.iter().filter_map(|v| parse_single_location(v)).collect()
+    items
+        .iter()
+        .filter_map(|v| parse_single_location(v))
+        .collect()
 }
 
 /// Parse a single Location or LocationLink JSON value.
@@ -969,10 +972,7 @@ fn parse_rename_response(result: &serde_json::Value) -> Option<LspWorkspaceEdit>
                     .filter_map(|e| parse_text_edit(e))
                     .collect();
                 if !edits.is_empty() {
-                    changes
-                        .entry(uri.to_string())
-                        .or_default()
-                        .extend(edits);
+                    changes.entry(uri.to_string()).or_default().extend(edits);
                 }
             }
         }
@@ -1344,10 +1344,7 @@ pub fn render_references_panel(
 
 /// Render the inline rename dialog as an egui Window.
 /// Returns `Some(new_name)` when the user confirms the rename (presses Enter).
-pub fn render_rename_dialog(
-    ctx: &egui::Context,
-    state: &mut RenameDialogState,
-) -> Option<String> {
+pub fn render_rename_dialog(ctx: &egui::Context, state: &mut RenameDialogState) -> Option<String> {
     if !state.visible {
         return None;
     }

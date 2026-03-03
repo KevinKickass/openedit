@@ -522,21 +522,13 @@ pub fn load_user_snippets() -> Vec<Snippet> {
                 snippets
             }
             Err(e) => {
-                log::warn!(
-                    "Failed to parse user snippets at {}: {}",
-                    path.display(),
-                    e
-                );
+                log::warn!("Failed to parse user snippets at {}: {}", path.display(), e);
                 Vec::new()
             }
         },
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
         Err(e) => {
-            log::warn!(
-                "Failed to read user snippets at {}: {}",
-                path.display(),
-                e
-            );
+            log::warn!("Failed to read user snippets at {}: {}", path.display(), e);
             Vec::new()
         }
     }
@@ -911,15 +903,13 @@ mod tests {
     fn test_placeholder_positions_multiline() {
         let state = SnippetState {
             active: true,
-            placeholders: vec![
-                SnippetPlaceholder {
-                    index: 1,
-                    default_text: "body".into(),
-                    line_offset: 1,
-                    col_offset: 4,
-                    length: 4,
-                },
-            ],
+            placeholders: vec![SnippetPlaceholder {
+                index: 1,
+                default_text: "body".into(),
+                line_offset: 1,
+                col_offset: 4,
+                length: 4,
+            }],
             current_index: 2, // After navigating past placeholder 1
             insert_position: Position::new(0, 0),
         };
@@ -987,14 +977,12 @@ mod tests {
 
     #[test]
     fn test_snippet_serialization_roundtrip() {
-        let snippets = vec![
-            Snippet {
-                trigger: "test".into(),
-                label: "Test snippet".into(),
-                body: "fn ${1:test_name}() {\n    $0\n}".into(),
-                language: "Rust".into(),
-            },
-        ];
+        let snippets = vec![Snippet {
+            trigger: "test".into(),
+            label: "Test snippet".into(),
+            body: "fn ${1:test_name}() {\n    $0\n}".into(),
+            language: "Rust".into(),
+        }];
         let json = serde_json::to_string_pretty(&snippets).unwrap();
         let deserialized: Vec<Snippet> = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.len(), 1);

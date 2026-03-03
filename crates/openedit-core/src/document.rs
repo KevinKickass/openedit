@@ -124,7 +124,9 @@ impl Document {
         }
 
         let cursor = *self.cursors.primary();
-        let offset = self.buffer.line_col_to_char(cursor.position.line, cursor.position.col);
+        let offset = self
+            .buffer
+            .line_col_to_char(cursor.position.line, cursor.position.col);
         let text = ch.to_string();
 
         self.undo_manager.record(
@@ -150,7 +152,9 @@ impl Document {
         }
 
         let cursor = *self.cursors.primary();
-        let offset = self.buffer.line_col_to_char(cursor.position.line, cursor.position.col);
+        let offset = self
+            .buffer
+            .line_col_to_char(cursor.position.line, cursor.position.col);
 
         self.undo_manager.record(
             EditOp::Insert {
@@ -175,17 +179,20 @@ impl Document {
             return;
         }
 
-        let offset = self.buffer.line_col_to_char(cursor.position.line, cursor.position.col);
+        let offset = self
+            .buffer
+            .line_col_to_char(cursor.position.line, cursor.position.col);
         if offset == 0 {
             return;
         }
 
         let prev_char = self.buffer.char_at(offset - 1);
-        let delete_start = if prev_char == '\n' && offset >= 2 && self.buffer.char_at(offset - 2) == '\r' {
-            offset - 2
-        } else {
-            offset - 1
-        };
+        let delete_start =
+            if prev_char == '\n' && offset >= 2 && self.buffer.char_at(offset - 2) == '\r' {
+                offset - 2
+            } else {
+                offset - 1
+            };
         let deleted = self.buffer.slice_to_string(delete_start..offset);
 
         self.undo_manager.record(
@@ -211,13 +218,18 @@ impl Document {
             return;
         }
 
-        let offset = self.buffer.line_col_to_char(cursor.position.line, cursor.position.col);
+        let offset = self
+            .buffer
+            .line_col_to_char(cursor.position.line, cursor.position.col);
         if offset >= self.buffer.len_chars() {
             return;
         }
 
         let ch = self.buffer.char_at(offset);
-        let delete_end = if ch == '\r' && offset + 1 < self.buffer.len_chars() && self.buffer.char_at(offset + 1) == '\n' {
+        let delete_end = if ch == '\r'
+            && offset + 1 < self.buffer.len_chars()
+            && self.buffer.char_at(offset + 1) == '\n'
+        {
             offset + 2
         } else {
             offset + 1
@@ -276,10 +288,15 @@ impl Document {
 
         let cursor = *self.cursors.primary();
         let line_text = self.buffer.line(cursor.position.line).to_string();
-        let indent: String = line_text.chars().take_while(|c| *c == ' ' || *c == '\t').collect();
+        let indent: String = line_text
+            .chars()
+            .take_while(|c| *c == ' ' || *c == '\t')
+            .collect();
         let insert = format!("\n{}", indent);
 
-        let offset = self.buffer.line_col_to_char(cursor.position.line, cursor.position.col);
+        let offset = self
+            .buffer
+            .line_col_to_char(cursor.position.line, cursor.position.col);
         self.undo_manager.record(
             EditOp::Insert {
                 offset,
@@ -314,7 +331,9 @@ impl Document {
         }
 
         let line_start = self.buffer.line_to_char(line_idx);
-        let deleted = self.buffer.slice_to_string(line_start..line_start + remove_count);
+        let deleted = self
+            .buffer
+            .slice_to_string(line_start..line_start + remove_count);
 
         self.undo_manager.record(
             EditOp::Delete {
@@ -340,17 +359,24 @@ impl Document {
             self.delete_selection();
             return;
         }
-        let offset = self.buffer.line_col_to_char(cursor.position.line, cursor.position.col);
+        let offset = self
+            .buffer
+            .line_col_to_char(cursor.position.line, cursor.position.col);
         if offset == 0 {
             return;
         }
 
         // Find word boundary (same logic as move_cursor_word_left)
         let mut i = offset;
-        while i > 0 && !self.buffer.char_at(i - 1).is_alphanumeric() && self.buffer.char_at(i - 1) != '_' {
+        while i > 0
+            && !self.buffer.char_at(i - 1).is_alphanumeric()
+            && self.buffer.char_at(i - 1) != '_'
+        {
             i -= 1;
         }
-        while i > 0 && (self.buffer.char_at(i - 1).is_alphanumeric() || self.buffer.char_at(i - 1) == '_') {
+        while i > 0
+            && (self.buffer.char_at(i - 1).is_alphanumeric() || self.buffer.char_at(i - 1) == '_')
+        {
             i -= 1;
         }
 
@@ -380,17 +406,24 @@ impl Document {
             self.delete_selection();
             return;
         }
-        let offset = self.buffer.line_col_to_char(cursor.position.line, cursor.position.col);
+        let offset = self
+            .buffer
+            .line_col_to_char(cursor.position.line, cursor.position.col);
         let total = self.buffer.len_chars();
         if offset >= total {
             return;
         }
 
         let mut i = offset;
-        while i < total && (self.buffer.char_at(i).is_alphanumeric() || self.buffer.char_at(i) == '_') {
+        while i < total
+            && (self.buffer.char_at(i).is_alphanumeric() || self.buffer.char_at(i) == '_')
+        {
             i += 1;
         }
-        while i < total && !self.buffer.char_at(i).is_alphanumeric() && self.buffer.char_at(i) != '_' {
+        while i < total
+            && !self.buffer.char_at(i).is_alphanumeric()
+            && self.buffer.char_at(i) != '_'
+        {
             i += 1;
         }
 
@@ -452,8 +485,8 @@ impl Document {
             | Some("yaml") | Some("toml") | Some("perl") | Some("r") | Some("dockerfile")
             | Some("makefile") | Some("cmake") | Some("powershell") => "#",
             Some("lua") | Some("sql") | Some("haskell") | Some("ada") => "--",
-            Some("lisp") | Some("clojure") | Some("scheme") | Some("ini")
-            | Some("assembly") | Some("asm") => ";",
+            Some("lisp") | Some("clojure") | Some("scheme") | Some("ini") | Some("assembly")
+            | Some("asm") => ";",
             Some("html") | Some("xml") => "//", // simplified; real HTML uses <!-- -->
             _ => "//",
         }
@@ -464,7 +497,13 @@ impl Document {
     /// For each line in `start_line..=end_line`, inserts `text` at column `col`.
     /// If a line is shorter than `col`, it is padded with spaces.
     /// This is recorded as a single undo transaction.
-    pub fn column_insert_text(&mut self, start_line: usize, end_line: usize, col: usize, text: &str) {
+    pub fn column_insert_text(
+        &mut self,
+        start_line: usize,
+        end_line: usize,
+        col: usize,
+        text: &str,
+    ) {
         if self.read_only || text.is_empty() {
             return;
         }
@@ -676,7 +715,8 @@ impl Document {
         );
 
         // Apply the replacement
-        self.buffer.remove(region_start..region_start + old_text.chars().count());
+        self.buffer
+            .remove(region_start..region_start + old_text.chars().count());
         self.buffer.insert(region_start, &new_text);
 
         // Update cursor position
@@ -790,11 +830,21 @@ impl Document {
     }
 
     pub fn move_cursor_page_up(&mut self, page_size: usize, extend_selection: bool) {
-        edit::move_cursor_page_up(&self.buffer, self.cursors.primary_mut(), page_size, extend_selection);
+        edit::move_cursor_page_up(
+            &self.buffer,
+            self.cursors.primary_mut(),
+            page_size,
+            extend_selection,
+        );
     }
 
     pub fn move_cursor_page_down(&mut self, page_size: usize, extend_selection: bool) {
-        edit::move_cursor_page_down(&self.buffer, self.cursors.primary_mut(), page_size, extend_selection);
+        edit::move_cursor_page_down(
+            &self.buffer,
+            self.cursors.primary_mut(),
+            page_size,
+            extend_selection,
+        );
     }
 
     pub fn move_cursor_home(&mut self, extend_selection: bool) {
@@ -814,14 +864,18 @@ impl Document {
     }
 
     pub fn move_cursor_doc_start(&mut self, extend_selection: bool) {
-        self.cursors.primary_mut().move_to(Position::zero(), extend_selection);
+        self.cursors
+            .primary_mut()
+            .move_to(Position::zero(), extend_selection);
         self.cursors.primary_mut().preferred_col = None;
     }
 
     pub fn move_cursor_doc_end(&mut self, extend_selection: bool) {
         let last_line = self.buffer.len_lines() - 1;
         let last_col = self.buffer.line_len_chars_no_newline(last_line);
-        self.cursors.primary_mut().move_to(Position::new(last_line, last_col), extend_selection);
+        self.cursors
+            .primary_mut()
+            .move_to(Position::new(last_line, last_col), extend_selection);
         self.cursors.primary_mut().preferred_col = None;
     }
 
@@ -835,7 +889,9 @@ impl Document {
 
     pub fn go_to_line(&mut self, line: usize) {
         let line = line.min(self.buffer.len_lines().saturating_sub(1));
-        self.cursors.primary_mut().move_to(Position::new(line, 0), false);
+        self.cursors
+            .primary_mut()
+            .move_to(Position::new(line, 0), false);
         self.scroll_line = line.saturating_sub(5); // scroll with some context
     }
 
@@ -915,7 +971,10 @@ impl Document {
         let text = self.buffer.to_string();
 
         // Find the furthest cursor position to search from
-        let last_cursor = self.cursors.cursors().iter()
+        let last_cursor = self
+            .cursors
+            .cursors()
+            .iter()
             .filter_map(|c| c.selection_range())
             .map(|(_, end)| self.buffer.line_col_to_char(end.line, end.col))
             .max()
@@ -923,12 +982,12 @@ impl Document {
 
         // Search forward from after the last cursor
         let search_start = last_cursor;
-        let found = text[search_start..].find(&selected).map(|i| search_start + i);
+        let found = text[search_start..]
+            .find(&selected)
+            .map(|i| search_start + i);
 
         // If not found, wrap around from beginning
-        let found = found.or_else(|| {
-            text[..search_start.min(text.len())].find(&selected)
-        });
+        let found = found.or_else(|| text[..search_start.min(text.len())].find(&selected));
 
         if let Some(byte_offset) = found {
             // Convert byte offset to char offset
@@ -941,7 +1000,8 @@ impl Document {
             // Check this isn't already selected by an existing cursor
             let already_selected = self.cursors.cursors().iter().any(|c| {
                 if let Some((s, e)) = c.selection_range() {
-                    s == Position::new(start_line, start_col) && e == Position::new(end_line, end_col)
+                    s == Position::new(start_line, start_col)
+                        && e == Position::new(end_line, end_col)
                 } else {
                     false
                 }
@@ -1099,7 +1159,9 @@ mod tests {
     fn test_insert_newline_with_indent() {
         let mut doc = Document::from_str("    hello");
         // Place cursor at end of line
-        doc.cursors.primary_mut().move_to(Position::new(0, 9), false);
+        doc.cursors
+            .primary_mut()
+            .move_to(Position::new(0, 9), false);
         doc.insert_newline_with_indent();
         assert_eq!(doc.buffer.to_string(), "    hello\n    ");
         assert_eq!(doc.cursors.primary().position, Position::new(1, 4));
@@ -1108,7 +1170,9 @@ mod tests {
     #[test]
     fn test_unindent() {
         let mut doc = Document::from_str("        indented");
-        doc.cursors.primary_mut().move_to(Position::new(0, 8), false);
+        doc.cursors
+            .primary_mut()
+            .move_to(Position::new(0, 8), false);
         doc.unindent();
         assert_eq!(doc.buffer.to_string(), "    indented");
         assert_eq!(doc.cursors.primary().position, Position::new(0, 4));
@@ -1117,7 +1181,9 @@ mod tests {
     #[test]
     fn test_unindent_partial() {
         let mut doc = Document::from_str("  small");
-        doc.cursors.primary_mut().move_to(Position::new(0, 2), false);
+        doc.cursors
+            .primary_mut()
+            .move_to(Position::new(0, 2), false);
         doc.unindent();
         assert_eq!(doc.buffer.to_string(), "small");
         assert_eq!(doc.cursors.primary().position, Position::new(0, 0));
@@ -1126,7 +1192,9 @@ mod tests {
     #[test]
     fn test_delete_word_left() {
         let mut doc = Document::from_str("hello world");
-        doc.cursors.primary_mut().move_to(Position::new(0, 11), false);
+        doc.cursors
+            .primary_mut()
+            .move_to(Position::new(0, 11), false);
         doc.delete_word_left();
         assert_eq!(doc.buffer.to_string(), "hello ");
     }
@@ -1134,7 +1202,9 @@ mod tests {
     #[test]
     fn test_delete_word_right() {
         let mut doc = Document::from_str("hello world");
-        doc.cursors.primary_mut().move_to(Position::new(0, 0), false);
+        doc.cursors
+            .primary_mut()
+            .move_to(Position::new(0, 0), false);
         doc.delete_word_right();
         assert_eq!(doc.buffer.to_string(), "world");
     }
@@ -1142,7 +1212,9 @@ mod tests {
     #[test]
     fn test_move_cursor_doc_start_end() {
         let mut doc = Document::from_str("abc\ndef\nghi");
-        doc.cursors.primary_mut().move_to(Position::new(1, 1), false);
+        doc.cursors
+            .primary_mut()
+            .move_to(Position::new(1, 1), false);
         doc.move_cursor_doc_start(false);
         assert_eq!(doc.cursors.primary().position, Position::new(0, 0));
         doc.move_cursor_doc_end(false);
@@ -1152,7 +1224,9 @@ mod tests {
     #[test]
     fn test_select_next_occurrence_selects_word() {
         let mut doc = Document::from_str("hello world hello");
-        doc.cursors.primary_mut().move_to(Position::new(0, 1), false); // inside "hello"
+        doc.cursors
+            .primary_mut()
+            .move_to(Position::new(0, 1), false); // inside "hello"
         doc.select_next_occurrence();
         // Should select "hello" (first one)
         assert_eq!(doc.selected_text(), "hello");
@@ -1206,7 +1280,9 @@ mod tests {
     #[test]
     fn test_select_next_occurrence_non_word_char() {
         let mut doc = Document::from_str("hello world");
-        doc.cursors.primary_mut().move_to(Position::new(0, 5), false); // on space
+        doc.cursors
+            .primary_mut()
+            .move_to(Position::new(0, 5), false); // on space
         doc.select_next_occurrence(); // should do nothing
         assert!(!doc.cursors.primary().has_selection());
     }
@@ -1379,7 +1455,9 @@ mod tests {
     #[test]
     fn test_toggle_comment_single_line_add() {
         let mut doc = Document::from_str("hello world");
-        doc.cursors.primary_mut().move_to(Position::new(0, 5), false);
+        doc.cursors
+            .primary_mut()
+            .move_to(Position::new(0, 5), false);
         doc.toggle_comment();
         assert_eq!(doc.buffer.to_string(), "// hello world");
         assert!(doc.modified);
@@ -1388,7 +1466,9 @@ mod tests {
     #[test]
     fn test_toggle_comment_single_line_remove() {
         let mut doc = Document::from_str("// hello world");
-        doc.cursors.primary_mut().move_to(Position::new(0, 5), false);
+        doc.cursors
+            .primary_mut()
+            .move_to(Position::new(0, 5), false);
         doc.toggle_comment();
         assert_eq!(doc.buffer.to_string(), "hello world");
         assert!(doc.modified);
@@ -1397,7 +1477,9 @@ mod tests {
     #[test]
     fn test_toggle_comment_preserves_indent() {
         let mut doc = Document::from_str("    hello world");
-        doc.cursors.primary_mut().move_to(Position::new(0, 8), false);
+        doc.cursors
+            .primary_mut()
+            .move_to(Position::new(0, 8), false);
         doc.toggle_comment();
         assert_eq!(doc.buffer.to_string(), "    // hello world");
     }
@@ -1405,7 +1487,9 @@ mod tests {
     #[test]
     fn test_toggle_comment_remove_with_indent() {
         let mut doc = Document::from_str("    // hello world");
-        doc.cursors.primary_mut().move_to(Position::new(0, 8), false);
+        doc.cursors
+            .primary_mut()
+            .move_to(Position::new(0, 8), false);
         doc.toggle_comment();
         assert_eq!(doc.buffer.to_string(), "    hello world");
     }
@@ -1417,7 +1501,10 @@ mod tests {
         doc.cursors.primary_mut().anchor = Some(Position::new(0, 0));
         doc.cursors.primary_mut().position = Position::new(2, 5);
         doc.toggle_comment();
-        assert_eq!(doc.buffer.to_string(), "// line one\n// line two\n// line three");
+        assert_eq!(
+            doc.buffer.to_string(),
+            "// line one\n// line two\n// line three"
+        );
     }
 
     #[test]
@@ -1436,14 +1523,19 @@ mod tests {
         doc.cursors.primary_mut().anchor = Some(Position::new(0, 0));
         doc.cursors.primary_mut().position = Position::new(2, 5);
         doc.toggle_comment();
-        assert_eq!(doc.buffer.to_string(), "// // already\n// not commented\n// // also here");
+        assert_eq!(
+            doc.buffer.to_string(),
+            "// // already\n// not commented\n// // also here"
+        );
     }
 
     #[test]
     fn test_toggle_comment_python_language() {
         let mut doc = Document::from_str("print('hello')");
         doc.language = Some("python".to_string());
-        doc.cursors.primary_mut().move_to(Position::new(0, 5), false);
+        doc.cursors
+            .primary_mut()
+            .move_to(Position::new(0, 5), false);
         doc.toggle_comment();
         assert_eq!(doc.buffer.to_string(), "# print('hello')");
     }
@@ -1452,7 +1544,9 @@ mod tests {
     fn test_toggle_comment_python_uncomment() {
         let mut doc = Document::from_str("# print('hello')");
         doc.language = Some("python".to_string());
-        doc.cursors.primary_mut().move_to(Position::new(0, 5), false);
+        doc.cursors
+            .primary_mut()
+            .move_to(Position::new(0, 5), false);
         doc.toggle_comment();
         assert_eq!(doc.buffer.to_string(), "print('hello')");
     }
@@ -1461,7 +1555,9 @@ mod tests {
     fn test_toggle_comment_lua_language() {
         let mut doc = Document::from_str("print('hello')");
         doc.language = Some("lua".to_string());
-        doc.cursors.primary_mut().move_to(Position::new(0, 5), false);
+        doc.cursors
+            .primary_mut()
+            .move_to(Position::new(0, 5), false);
         doc.toggle_comment();
         assert_eq!(doc.buffer.to_string(), "-- print('hello')");
     }
@@ -1479,7 +1575,9 @@ mod tests {
     #[test]
     fn test_toggle_comment_undo() {
         let mut doc = Document::from_str("hello world");
-        doc.cursors.primary_mut().move_to(Position::new(0, 5), false);
+        doc.cursors
+            .primary_mut()
+            .move_to(Position::new(0, 5), false);
         doc.toggle_comment();
         assert_eq!(doc.buffer.to_string(), "// hello world");
         doc.undo();
@@ -1489,7 +1587,9 @@ mod tests {
     #[test]
     fn test_toggle_comment_undo_uncomment() {
         let mut doc = Document::from_str("// hello world");
-        doc.cursors.primary_mut().move_to(Position::new(0, 5), false);
+        doc.cursors
+            .primary_mut()
+            .move_to(Position::new(0, 5), false);
         doc.toggle_comment();
         assert_eq!(doc.buffer.to_string(), "hello world");
         doc.undo();
@@ -1500,7 +1600,9 @@ mod tests {
     fn test_toggle_comment_read_only_noop() {
         let mut doc = Document::from_str("hello world");
         doc.read_only = true;
-        doc.cursors.primary_mut().move_to(Position::new(0, 5), false);
+        doc.cursors
+            .primary_mut()
+            .move_to(Position::new(0, 5), false);
         doc.toggle_comment();
         assert_eq!(doc.buffer.to_string(), "hello world");
         assert!(!doc.modified);
@@ -1513,7 +1615,10 @@ mod tests {
         doc.cursors.primary_mut().position = Position::new(2, 5);
         doc.toggle_comment();
         // Comment at minimum indent (4 spaces)
-        assert_eq!(doc.buffer.to_string(), "    // line1\n    //     line2\n    // line3");
+        assert_eq!(
+            doc.buffer.to_string(),
+            "    // line1\n    //     line2\n    // line3"
+        );
     }
 
     #[test]

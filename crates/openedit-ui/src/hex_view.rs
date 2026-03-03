@@ -7,7 +7,11 @@ pub enum HexAction {
     /// No action.
     None,
     /// A byte was edited at the given offset with the given new value.
-    EditByte { offset: usize, old_byte: u8, new_byte: u8 },
+    EditByte {
+        offset: usize,
+        old_byte: u8,
+        new_byte: u8,
+    },
 }
 
 /// State for the hex editor view.
@@ -204,8 +208,15 @@ pub fn render_hex_view(
         )
     });
 
-    let (typed_chars, escape_pressed, go_to_offset_pressed, arrow_left, arrow_right, arrow_up, arrow_down) =
-        hex_input;
+    let (
+        typed_chars,
+        escape_pressed,
+        go_to_offset_pressed,
+        arrow_left,
+        arrow_right,
+        arrow_up,
+        arrow_down,
+    ) = hex_input;
 
     // Handle escape: clear editing state
     if escape_pressed {
@@ -471,16 +482,9 @@ fn render_go_to_offset_dialog(
     );
 
     // Draw dialog background with border
-    ui.painter().rect_filled(
-        dialog_rect,
-        4.0,
-        theme.gutter_bg,
-    );
-    ui.painter().rect_stroke(
-        dialog_rect,
-        4.0,
-        egui::Stroke::new(1.0, theme.gutter_fg),
-    );
+    ui.painter().rect_filled(dialog_rect, 4.0, theme.gutter_bg);
+    ui.painter()
+        .rect_stroke(dialog_rect, 4.0, egui::Stroke::new(1.0, theme.gutter_fg));
 
     // Label
     ui.painter().text(
@@ -493,7 +497,10 @@ fn render_go_to_offset_dialog(
 
     // Text input area
     let input_rect = egui::Rect::from_min_size(
-        egui::Pos2::new(dialog_rect.left() + 10.0, dialog_rect.top() + 8.0 + font_size * 1.5),
+        egui::Pos2::new(
+            dialog_rect.left() + 10.0,
+            dialog_rect.top() + 8.0 + font_size * 1.5,
+        ),
         egui::Vec2::new(dialog_width - 20.0, font_size * 1.5),
     );
 
@@ -514,9 +521,7 @@ fn render_go_to_offset_dialog(
     te_response.request_focus();
 
     // Handle Enter to confirm
-    if te_response.lost_focus()
-        && input_ui.input(|i| i.key_pressed(egui::Key::Enter))
-    {
+    if te_response.lost_focus() && input_ui.input(|i| i.key_pressed(egui::Key::Enter)) {
         if let Some(offset) = parse_offset(&state.go_to_offset_input) {
             if offset < state.data.len() {
                 state.selected_offset = Some(offset);

@@ -37,11 +37,7 @@ fn save_imported_theme(theme_file: &ThemeFile) -> Result<PathBuf, String> {
 
     std::fs::write(&path, toml_content).map_err(|e| format!("write error: {}", e))?;
 
-    log::info!(
-        "Imported theme '{}' to {}",
-        theme_file.name,
-        path.display()
-    );
+    log::info!("Imported theme '{}' to {}", theme_file.name, path.display());
     Ok(path)
 }
 
@@ -249,10 +245,7 @@ fn normalize_color(s: &str) -> String {
             // #RGB -> #RRGGBB
             3 => {
                 let chars: Vec<char> = hex.chars().collect();
-                format!(
-                    "#{0}{0}{1}{1}{2}{2}",
-                    chars[0], chars[1], chars[2]
-                )
+                format!("#{0}{0}{1}{1}{2}{2}", chars[0], chars[1], chars[2])
             }
             // #RGBA -> #RRGGBBAA
             4 => {
@@ -272,9 +265,7 @@ fn normalize_color(s: &str) -> String {
 }
 
 /// Extract syntax colors from VS Code "tokenColors" array.
-fn parse_vscode_token_colors(
-    token_colors: Option<&Vec<serde_json::Value>>,
-) -> SyntaxColorsFile {
+fn parse_vscode_token_colors(token_colors: Option<&Vec<serde_json::Value>>) -> SyntaxColorsFile {
     let mut syntax = SyntaxColorsFile::default();
 
     let tokens = match token_colors {
@@ -305,9 +296,10 @@ fn parse_vscode_token_colors(
 
         // Get the scope(s) for this token color rule.
         let scopes = match obj.get("scope") {
-            Some(serde_json::Value::String(s)) => {
-                s.split(',').map(|part| part.trim().to_string()).collect::<Vec<_>>()
-            }
+            Some(serde_json::Value::String(s)) => s
+                .split(',')
+                .map(|part| part.trim().to_string())
+                .collect::<Vec<_>>(),
             Some(serde_json::Value::Array(arr)) => arr
                 .iter()
                 .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
@@ -382,7 +374,10 @@ fn parse_vscode_token_colors(
                     syntax.variable_builtin = Some(foreground.clone());
                 }
             }
-            if scope_matches(scope, &["variable.other.property", "meta.object-literal.key"]) {
+            if scope_matches(
+                scope,
+                &["variable.other.property", "meta.object-literal.key"],
+            ) {
                 if syntax.property.is_none() {
                     syntax.property = Some(foreground.clone());
                 }
@@ -394,11 +389,7 @@ fn parse_vscode_token_colors(
             }
             if scope_matches(
                 scope,
-                &[
-                    "punctuation",
-                    "punctuation.definition",
-                    "meta.brace",
-                ],
+                &["punctuation", "punctuation.definition", "meta.brace"],
             ) {
                 if syntax.punctuation.is_none() {
                     syntax.punctuation = Some(foreground.clone());
@@ -414,13 +405,7 @@ fn parse_vscode_token_colors(
                     syntax.constant_builtin = Some(foreground.clone());
                 }
             }
-            if scope_matches(
-                scope,
-                &[
-                    "entity.other.attribute-name",
-                    "meta.attribute",
-                ],
-            ) {
+            if scope_matches(scope, &["entity.other.attribute-name", "meta.attribute"]) {
                 if syntax.attribute.is_none() {
                     syntax.attribute = Some(foreground.clone());
                 }
@@ -430,10 +415,7 @@ fn parse_vscode_token_colors(
                     syntax.tag = Some(foreground.clone());
                 }
             }
-            if scope_matches(
-                scope,
-                &["constant.character.escape", "string.escape"],
-            ) {
+            if scope_matches(scope, &["constant.character.escape", "string.escape"]) {
                 if syntax.escape.is_none() {
                     syntax.escape = Some(foreground.clone());
                 }
@@ -604,14 +586,12 @@ fn parse_npp_lexer_words_style(
     let name_lower = name.to_lowercase();
 
     // Map Notepad++ style names to our syntax fields.
-    if name_lower.contains("keyword") || name_lower == "instruction word" || name_lower == "word1"
-    {
+    if name_lower.contains("keyword") || name_lower == "instruction word" || name_lower == "word1" {
         if syntax.keyword.is_none() {
             syntax.keyword = Some(fg.clone());
         }
     }
-    if name_lower.contains("comment") || name_lower == "commentline" || name_lower == "commentdoc"
-    {
+    if name_lower.contains("comment") || name_lower == "commentline" || name_lower == "commentdoc" {
         if syntax.comment.is_none() {
             syntax.comment = Some(fg.clone());
         }
@@ -803,7 +783,10 @@ mod tests {
     #[test]
     fn test_scope_matches_prefix() {
         assert!(scope_matches("keyword.control", &["keyword"]));
-        assert!(scope_matches("keyword.operator.assignment", &["keyword.operator"]));
+        assert!(scope_matches(
+            "keyword.operator.assignment",
+            &["keyword.operator"]
+        ));
     }
 
     #[test]

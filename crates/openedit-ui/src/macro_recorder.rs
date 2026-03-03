@@ -3,7 +3,6 @@
 /// Records user actions (typed text, paste events, keyboard shortcuts) during a
 /// recording session, and can replay them to repeat the same sequence of edits.
 /// Supports named macro slots, save/load to disk as JSON, and multi-run playback.
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -277,8 +276,7 @@ impl MacroRecorder {
         let Ok(content) = std::fs::read_to_string(&path) else {
             return;
         };
-        let Ok(macros) = serde_json::from_str::<HashMap<String, Vec<MacroAction>>>(&content)
-        else {
+        let Ok(macros) = serde_json::from_str::<HashMap<String, Vec<MacroAction>>>(&content) else {
             return;
         };
         // Merge loaded macros into named_macros and saved_macros

@@ -349,9 +349,15 @@ impl OpenEditApp {
         openedit_core::load_plugins(&mut app.plugin_manager);
 
         // Register built-in plugins
-        let _ = app.plugin_manager.register(Box::new(builtin_plugins::WordCounterPlugin::new()));
-        let _ = app.plugin_manager.register(Box::new(builtin_plugins::LoremIpsumPlugin::new()));
-        let _ = app.plugin_manager.register(Box::new(builtin_plugins::TimestampPlugin::new()));
+        let _ = app
+            .plugin_manager
+            .register(Box::new(builtin_plugins::WordCounterPlugin::new()));
+        let _ = app
+            .plugin_manager
+            .register(Box::new(builtin_plugins::LoremIpsumPlugin::new()));
+        let _ = app
+            .plugin_manager
+            .register(Box::new(builtin_plugins::TimestampPlugin::new()));
 
         // Broadcast startup event
         app.plugin_manager.broadcast_event(&EditorEvent::Startup);
@@ -406,9 +412,10 @@ impl OpenEditApp {
                 }
 
                 // Broadcast FileOpened event to plugins
-                self.plugin_manager.broadcast_event(&EditorEvent::FileOpened(
-                    path.to_string_lossy().into_owned(),
-                ));
+                self.plugin_manager
+                    .broadcast_event(&EditorEvent::FileOpened(
+                        path.to_string_lossy().into_owned(),
+                    ));
 
                 self.save_session();
             }
@@ -615,7 +622,8 @@ impl OpenEditApp {
                     self.git_state.refresh_statuses();
                     self.git_state.invalidate_file_cache();
                     // Broadcast FileSaved event to plugins
-                    self.plugin_manager.broadcast_event(&EditorEvent::FileSaved(path_str));
+                    self.plugin_manager
+                        .broadcast_event(&EditorEvent::FileSaved(path_str));
                 }
                 Err(e) => {
                     log::error!("Failed to save {}: {}", path.display(), e);
@@ -710,7 +718,6 @@ impl OpenEditApp {
         false
     }
 
-
     /// Apply a workspace edit from an LSP rename response.
     /// Opens files that are not already open and applies text edits.
     fn apply_workspace_edit(&mut self, edit: &crate::lsp::LspWorkspaceEdit) {
@@ -719,7 +726,9 @@ impl OpenEditApp {
 
         for (uri, text_edits) in &edit.changes {
             let Ok(url) = Url::parse(uri) else { continue };
-            let Ok(path) = url.to_file_path() else { continue };
+            let Ok(path) = url.to_file_path() else {
+                continue;
+            };
 
             // Find or open the document
             let tab_idx = if let Some(idx) = self
@@ -748,10 +757,8 @@ impl OpenEditApp {
             });
 
             for te in &sorted_edits {
-                let start_offset =
-                    doc.buffer.line_col_to_char(te.start_line, te.start_col);
-                let end_offset =
-                    doc.buffer.line_col_to_char(te.end_line, te.end_col);
+                let start_offset = doc.buffer.line_col_to_char(te.start_line, te.start_col);
+                let end_offset = doc.buffer.line_col_to_char(te.end_line, te.end_col);
 
                 // Delete the old range
                 if end_offset > start_offset {
@@ -1213,12 +1220,9 @@ impl OpenEditApp {
                         // (will be displayed next frame when response arrives)
                         let char_w = crate::editor_view::char_width_for_font(self.font_size);
                         let line_h = crate::editor_view::line_height_for_font(self.font_size);
-                        let digit_count =
-                            format!("{}", doc.buffer.len_lines()).len().max(3);
-                        let gutter_w =
-                            (digit_count as f32 + 2.0) * char_w + char_w * 1.5 + 8.0;
-                        let visible_line =
-                            cursor.line.saturating_sub(doc.scroll_line);
+                        let digit_count = format!("{}", doc.buffer.len_lines()).len().max(3);
+                        let gutter_w = (digit_count as f32 + 2.0) * char_w + char_w * 1.5 + 8.0;
+                        let visible_line = cursor.line.saturating_sub(doc.scroll_line);
                         self.hover_pos = Some(egui::Pos2::new(
                             200.0 + gutter_w + 4.0 + cursor.col as f32 * char_w,
                             100.0 + visible_line as f32 * line_h,
@@ -1495,15 +1499,13 @@ impl OpenEditApp {
             }
             "diff.next_hunk" => {
                 if self.diff_state.active {
-                    let line_height =
-                        crate::editor_view::line_height_for_font(self.font_size);
+                    let line_height = crate::editor_view::line_height_for_font(self.font_size);
                     diff_view::navigate_next_hunk(&mut self.diff_state, line_height);
                 }
             }
             "diff.prev_hunk" => {
                 if self.diff_state.active {
-                    let line_height =
-                        crate::editor_view::line_height_for_font(self.font_size);
+                    let line_height = crate::editor_view::line_height_for_font(self.font_size);
                     diff_view::navigate_prev_hunk(&mut self.diff_state, line_height);
                 }
             }
@@ -1567,16 +1569,12 @@ impl OpenEditApp {
                                     .file_name()
                                     .map(|n| n.to_string_lossy().to_string())
                                     .unwrap_or_else(|| "file".to_string());
-                                self.git_status_message =
-                                    Some(format!("Staged: {}", name));
-                                self.git_status_message_time =
-                                    Some(std::time::Instant::now());
+                                self.git_status_message = Some(format!("Staged: {}", name));
+                                self.git_status_message_time = Some(std::time::Instant::now());
                             }
                             Err(e) => {
-                                self.git_status_message =
-                                    Some(format!("Stage failed: {}", e));
-                                self.git_status_message_time =
-                                    Some(std::time::Instant::now());
+                                self.git_status_message = Some(format!("Stage failed: {}", e));
+                                self.git_status_message_time = Some(std::time::Instant::now());
                             }
                         }
                     } else {
@@ -1654,17 +1652,19 @@ impl OpenEditApp {
     }
 
     /// Build a PluginContext from the current editor state.
-    fn build_plugin_context(&self) -> (
-        Option<String>,  // active_text_owned
-        Option<String>,  // active_path_owned
-        Option<String>,  // selected_text_owned
-        Option<String>,  // file_name_owned
-        Option<String>,  // language_owned
+    fn build_plugin_context(
+        &self,
+    ) -> (
+        Option<String>,         // active_text_owned
+        Option<String>,         // active_path_owned
+        Option<String>,         // selected_text_owned
+        Option<String>,         // file_name_owned
+        Option<String>,         // language_owned
         Option<(usize, usize)>, // selection
-        usize,           // cursor_line
-        usize,           // cursor_col
-        usize,           // line_count
-        bool,            // is_modified
+        usize,                  // cursor_line
+        usize,                  // cursor_col
+        usize,                  // line_count
+        bool,                   // is_modified
     ) {
         if let Some(doc) = self.documents.get(self.active_tab) {
             let text = doc.buffer.to_string();
@@ -1677,20 +1677,33 @@ impl OpenEditApp {
             });
             let selected = if cursor.has_selection() {
                 let s = doc.selected_text();
-                if s.is_empty() { None } else { Some(s) }
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s)
+                }
             } else {
                 None
             };
-            let file_name = doc.path.as_ref()
+            let file_name = doc
+                .path
+                .as_ref()
                 .and_then(|p| p.file_name())
                 .map(|n| n.to_string_lossy().into_owned());
             let language = doc.language.clone();
             let line_count = doc.buffer.len_lines();
             let is_modified = doc.modified;
             (
-                Some(text), path, selected, file_name, language,
-                sel, cursor.position.line, cursor.position.col,
-                line_count, is_modified,
+                Some(text),
+                path,
+                selected,
+                file_name,
+                language,
+                sel,
+                cursor.position.line,
+                cursor.position.col,
+                line_count,
+                is_modified,
             )
         } else {
             (None, None, None, None, None, None, 0, 0, 0, false)
@@ -1725,9 +1738,16 @@ impl OpenEditApp {
 
         // Build PluginContext from current document state
         let (
-            active_text_owned, active_path_owned, selected_text_owned,
-            file_name_owned, language_owned, selection,
-            cursor_line, cursor_col, line_count, is_modified,
+            active_text_owned,
+            active_path_owned,
+            selected_text_owned,
+            file_name_owned,
+            language_owned,
+            selection,
+            cursor_line,
+            cursor_col,
+            line_count,
+            is_modified,
         ) = self.build_plugin_context();
 
         let tab_count = self.documents.len();
@@ -1747,7 +1767,9 @@ impl OpenEditApp {
             editor_version: env!("CARGO_PKG_VERSION"),
         };
 
-        let action = self.plugin_manager.execute_command(&plugin_id, &cmd_id, &ctx);
+        let action = self
+            .plugin_manager
+            .execute_command(&plugin_id, &cmd_id, &ctx);
         self.apply_plugin_action(action);
     }
 
@@ -1777,10 +1799,9 @@ impl OpenEditApp {
                     doc.select_all();
                     doc.delete_selection_public();
                     doc.insert_text(&text);
-                    doc.cursors.primary_mut().move_to(
-                        openedit_core::Position::zero(),
-                        false,
-                    );
+                    doc.cursors
+                        .primary_mut()
+                        .move_to(openedit_core::Position::zero(), false);
                 }
             }
             PluginAction::OpenFile(path) => {
@@ -1824,10 +1845,9 @@ impl OpenEditApp {
             .path
             .as_ref()
             .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|| {
-                format!("Untitled-{}", self.documents[idx].id.0)
-            });
-        self.plugin_manager.broadcast_event(&EditorEvent::FileClosed(tab_name));
+            .unwrap_or_else(|| format!("Untitled-{}", self.documents[idx].id.0));
+        self.plugin_manager
+            .broadcast_event(&EditorEvent::FileClosed(tab_name));
 
         // Clear macro script tracking if closing that tab
         if self.is_macro_script_tab(idx) {
@@ -1857,35 +1877,35 @@ impl OpenEditApp {
                     .to_lowercase()
                     .replace(' ', "_")
                     .replace(|c: char| !c.is_alphanumeric() && c != '_', "");
-                self.command_palette.dynamic_commands.push(
-                    command_palette::Command {
+                self.command_palette
+                    .dynamic_commands
+                    .push(command_palette::Command {
                         id: format!("view.theme.{}", config_key),
                         label: format!("Theme: {} (custom)", name),
                         shortcut: "",
-                    },
-                );
+                    });
             }
         }
 
         // Add plugin-provided commands
         for (plugin_id, pcmd) in self.plugin_manager.all_commands() {
-            self.command_palette.dynamic_commands.push(
-                command_palette::Command {
+            self.command_palette
+                .dynamic_commands
+                .push(command_palette::Command {
                     id: format!("plugin.{}.{}", plugin_id, pcmd.id),
                     label: pcmd.label.clone(),
                     shortcut: "",
-                },
-            );
+                });
         }
 
         // Add plugin management commands
-        self.command_palette.dynamic_commands.push(
-            command_palette::Command {
+        self.command_palette
+            .dynamic_commands
+            .push(command_palette::Command {
                 id: "plugins.list".into(),
                 label: "Plugins: List Installed".into(),
                 shortcut: "",
-            },
-        );
+            });
     }
 
     /// Build an `EditorConfig` from the current app state.
@@ -1917,8 +1937,7 @@ impl OpenEditApp {
         let doc = match self.documents.get(self.active_tab) {
             Some(d) => d,
             None => {
-                self.print_dialog_state.status_message =
-                    Some("No document to print".to_string());
+                self.print_dialog_state.status_message = Some("No document to print".to_string());
                 return;
             }
         };
@@ -1935,10 +1954,7 @@ impl OpenEditApp {
 
         // Get syntax highlight spans if requested
         let highlight_spans = if self.print_dialog_state.config.syntax_highlighting {
-            let lang_key = doc
-                .language
-                .as_deref()
-                .and_then(SyntaxEngine::language_key);
+            let lang_key = doc.language.as_deref().and_then(SyntaxEngine::language_key);
             if let Some(key) = lang_key {
                 let spans = self.syntax_engine.highlight_lines(&source, key);
                 if spans.is_empty() {
@@ -1999,18 +2015,16 @@ impl OpenEditApp {
             let temp_dir = std::env::temp_dir();
             let temp_path = temp_dir.join(format!("openedit_print_{}.pdf", std::process::id()));
             match std::fs::write(&temp_path, &pdf_bytes) {
-                Ok(()) => {
-                    match print::open_with_system(&temp_path) {
-                        Ok(()) => {
-                            log::info!("Opened PDF for printing: {}", temp_path.display());
-                            self.print_dialog_state.open = false;
-                        }
-                        Err(e) => {
-                            self.print_dialog_state.status_message =
-                                Some(format!("Failed to open PDF viewer: {}", e));
-                        }
+                Ok(()) => match print::open_with_system(&temp_path) {
+                    Ok(()) => {
+                        log::info!("Opened PDF for printing: {}", temp_path.display());
+                        self.print_dialog_state.open = false;
                     }
-                }
+                    Err(e) => {
+                        self.print_dialog_state.status_message =
+                            Some(format!("Failed to open PDF viewer: {}", e));
+                    }
+                },
                 Err(e) => {
                     self.print_dialog_state.status_message =
                         Some(format!("Failed to write temp PDF: {}", e));
@@ -2024,11 +2038,13 @@ impl eframe::App for OpenEditApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Broadcast TabChanged event when the active tab changes
         if self.active_tab != self.last_active_tab {
-            let path = self.documents
+            let path = self
+                .documents
                 .get(self.active_tab)
                 .and_then(|d| d.path.as_ref())
                 .map(|p| p.to_string_lossy().into_owned());
-            self.plugin_manager.broadcast_event(&EditorEvent::TabChanged(path));
+            self.plugin_manager
+                .broadcast_event(&EditorEvent::TabChanged(path));
             self.last_active_tab = self.active_tab;
         }
 
@@ -2508,13 +2524,11 @@ impl eframe::App for OpenEditApp {
         }
         // Diff hunk navigation (F7 / Shift+F7)
         if diff_next_hunk && self.diff_state.active {
-            let line_height =
-                crate::editor_view::line_height_for_font(self.font_size);
+            let line_height = crate::editor_view::line_height_for_font(self.font_size);
             diff_view::navigate_next_hunk(&mut self.diff_state, line_height);
         }
         if diff_prev_hunk && self.diff_state.active {
-            let line_height =
-                crate::editor_view::line_height_for_font(self.font_size);
+            let line_height = crate::editor_view::line_height_for_font(self.font_size);
             diff_view::navigate_prev_hunk(&mut self.diff_state, line_height);
         }
 
@@ -2743,7 +2757,14 @@ impl eframe::App for OpenEditApp {
                             self.execute_command("view.toggle_word_wrap");
                             ui.close_menu();
                         }
-                        if ui.button(if self.show_markdown_preview { "✓ Markdown Preview  Ctrl+Shift+M" } else { "  Markdown Preview  Ctrl+Shift+M" }).clicked() {
+                        if ui
+                            .button(if self.show_markdown_preview {
+                                "✓ Markdown Preview  Ctrl+Shift+M"
+                            } else {
+                                "  Markdown Preview  Ctrl+Shift+M"
+                            })
+                            .clicked()
+                        {
                             self.show_markdown_preview = !self.show_markdown_preview;
                             self.markdown_preview_scroll = 0.0;
                             ui.close_menu();
@@ -2795,8 +2816,7 @@ impl eframe::App for OpenEditApp {
                         }
                         if ui.button("Go to Definition  F12").clicked() {
                             if let Some(doc) = self.documents.get(self.active_tab) {
-                                if let (Some(ref lang), Some(ref path)) =
-                                    (&doc.language, &doc.path)
+                                if let (Some(ref lang), Some(ref path)) = (&doc.language, &doc.path)
                                 {
                                     let uri = Url::from_file_path(path)
                                         .map(|u| u.to_string())
@@ -3827,9 +3847,7 @@ impl eframe::App for OpenEditApp {
                 }
 
                 // Diagnostic hover tooltip (separate from LSP hover)
-                if let Some((ref diag_msg, diag_pos)) =
-                    self.editor_view_state.diagnostic_hover
-                {
+                if let Some((ref diag_msg, diag_pos)) = self.editor_view_state.diagnostic_hover {
                     let mut diag_ui = main_ui.new_child(
                         egui::UiBuilder::new()
                             .max_rect(editor_rect)
@@ -4468,17 +4486,13 @@ impl eframe::App for OpenEditApp {
                             let msg = self.git_commit_message.trim().to_string();
                             match self.git_state.commit(&msg) {
                                 Ok(oid) => {
-                                    self.git_status_message =
-                                        Some(format!("Committed: {}", oid));
-                                    self.git_status_message_time =
-                                        Some(std::time::Instant::now());
+                                    self.git_status_message = Some(format!("Committed: {}", oid));
+                                    self.git_status_message_time = Some(std::time::Instant::now());
                                     self.git_branch = self.git_state.branch.clone();
                                 }
                                 Err(e) => {
-                                    self.git_status_message =
-                                        Some(format!("Commit failed: {}", e));
-                                    self.git_status_message_time =
-                                        Some(std::time::Instant::now());
+                                    self.git_status_message = Some(format!("Commit failed: {}", e));
+                                    self.git_status_message_time = Some(std::time::Instant::now());
                                 }
                             }
                             self.git_commit_dialog_open = false;
@@ -4527,29 +4541,22 @@ impl eframe::App for OpenEditApp {
             );
             match panel_action {
                 plugin_panel::PluginPanelAction::ReloadPlugins => {
-                    self.plugin_manager
-                        .broadcast_event(&EditorEvent::Startup);
+                    self.plugin_manager.broadcast_event(&EditorEvent::Startup);
                 }
                 plugin_panel::PluginPanelAction::OpenPluginsFolder => {
                     let dir = plugin_panel::plugins_dir();
                     let _ = std::fs::create_dir_all(&dir);
                     #[cfg(target_os = "linux")]
                     {
-                        let _ = std::process::Command::new("xdg-open")
-                            .arg(&dir)
-                            .spawn();
+                        let _ = std::process::Command::new("xdg-open").arg(&dir).spawn();
                     }
                     #[cfg(target_os = "macos")]
                     {
-                        let _ = std::process::Command::new("open")
-                            .arg(&dir)
-                            .spawn();
+                        let _ = std::process::Command::new("open").arg(&dir).spawn();
                     }
                     #[cfg(target_os = "windows")]
                     {
-                        let _ = std::process::Command::new("explorer")
-                            .arg(&dir)
-                            .spawn();
+                        let _ = std::process::Command::new("explorer").arg(&dir).spawn();
                     }
                 }
                 plugin_panel::PluginPanelAction::None => {}

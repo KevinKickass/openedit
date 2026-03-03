@@ -617,12 +617,9 @@ pub fn render_editor(
                 };
                 if *is_current {
                     // Active placeholder: distinct teal/blue background
-                    let active_bg =
-                        egui::Color32::from_rgba_premultiplied(0, 180, 200, 60);
-                    let ph_rect = Rect::from_min_size(
-                        Pos2::new(x, y),
-                        Vec2::new(width, line_height),
-                    );
+                    let active_bg = egui::Color32::from_rgba_premultiplied(0, 180, 200, 60);
+                    let ph_rect =
+                        Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, line_height));
                     ui.painter().rect_filled(ph_rect, 2.0, active_bg);
                     // Border for visibility
                     ui.painter().rect_stroke(
@@ -635,14 +632,10 @@ pub fn render_editor(
                     );
                 } else {
                     // Inactive placeholders: subtle underline
-                    let inactive_color =
-                        egui::Color32::from_rgba_premultiplied(150, 150, 150, 80);
+                    let inactive_color = egui::Color32::from_rgba_premultiplied(150, 150, 150, 80);
                     let underline_y = y + line_height - 1.0;
                     ui.painter().line_segment(
-                        [
-                            Pos2::new(x, underline_y),
-                            Pos2::new(x + width, underline_y),
-                        ],
+                        [Pos2::new(x, underline_y), Pos2::new(x + width, underline_y)],
                         egui::Stroke::new(1.5, inactive_color),
                     );
                 }
@@ -798,11 +791,9 @@ pub fn render_editor(
                             .map(|&(_, vr)| (vr.line_idx, vr.col_offset))
                             .unwrap_or((0, 0))
                     });
-                let h_raw_col =
-                    (((hover_pos.x - text_left - 4.0) / char_width).round() as isize).max(0)
-                        as usize;
-                let h_col =
-                    h_col_offset + h_raw_col + (if word_wrap { 0 } else { scroll_col });
+                let h_raw_col = (((hover_pos.x - text_left - 4.0) / char_width).round() as isize)
+                    .max(0) as usize;
+                let h_col = h_col_offset + h_raw_col + (if word_wrap { 0 } else { scroll_col });
                 let h_line = h_line_idx.min(total_lines.saturating_sub(1));
                 let h_col = h_col.min(doc.buffer.line_len_chars_no_newline(h_line));
                 let doc_pos = Position::new(h_line, h_col);
@@ -1079,9 +1070,7 @@ fn handle_keyboard_input(
     let is_recording = macro_rec.is_recording();
 
     // Check vim mode up front so we can use it inside the closure
-    let vim_enabled = vim_state
-        .as_ref()
-        .map_or(false, |v| v.enabled);
+    let vim_enabled = vim_state.as_ref().map_or(false, |v| v.enabled);
 
     // Collect events first so we can process them with vim_state outside the closure.
     let events = ui.input(|input| input.events.clone());
@@ -1150,8 +1139,7 @@ fn handle_keyboard_input(
                                 doc.insert_text(text);
                                 modified = true;
                                 if is_recording {
-                                    pending_macro_actions
-                                        .push(MacroAction::Paste(text.clone()));
+                                    pending_macro_actions.push(MacroAction::Paste(text.clone()));
                                 }
                             }
                         }
@@ -1265,12 +1253,7 @@ fn handle_keyboard_input(
 
 /// Convert an egui key event to a string that VimState.handle_key() expects.
 /// Returns None if the key cannot be meaningfully mapped.
-fn egui_key_to_vim_str(
-    key: &egui::Key,
-    ctrl: bool,
-    shift: bool,
-    _alt: bool,
-) -> Option<String> {
+fn egui_key_to_vim_str(key: &egui::Key, ctrl: bool, shift: bool, _alt: bool) -> Option<String> {
     // For Ctrl+key combos, return "Ctrl+x" format
     if ctrl {
         let base = match key {

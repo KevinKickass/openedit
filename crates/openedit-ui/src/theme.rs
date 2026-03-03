@@ -352,8 +352,7 @@ impl ThemeRegistry {
 
     /// Load and parse a single TOML theme file.
     fn load_theme_file(path: &std::path::Path) -> Result<EditorTheme, String> {
-        let content =
-            std::fs::read_to_string(path).map_err(|e| format!("read error: {}", e))?;
+        let content = std::fs::read_to_string(path).map_err(|e| format!("read error: {}", e))?;
 
         let theme_file: ThemeFile =
             toml::from_str(&content).map_err(|e| format!("parse error: {}", e))?;
@@ -1082,7 +1081,7 @@ mod tests {
         // Verify it starts with # and has 8 hex digits (alpha < 255)
         assert!(s.starts_with('#'));
         assert_eq!(s.len(), 9); // "#" + 8 hex chars
-        // Round-trip: parse back and compare
+                                // Round-trip: parse back and compare
         let parsed = parse_hex_color(&s).unwrap();
         assert_eq!(parsed, c);
     }

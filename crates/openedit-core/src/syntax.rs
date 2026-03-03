@@ -248,14 +248,12 @@ impl SyntaxEngine {
 
         // C++ (query extends the C query, so concatenate both)
         {
-            let cpp_query = format!("{}\n{}", tree_sitter_c::HIGHLIGHT_QUERY, tree_sitter_cpp::HIGHLIGHT_QUERY);
-            self.register(
-                "cpp",
-                tree_sitter_cpp::LANGUAGE.into(),
-                &cpp_query,
-                "",
-                "",
+            let cpp_query = format!(
+                "{}\n{}",
+                tree_sitter_c::HIGHLIGHT_QUERY,
+                tree_sitter_cpp::HIGHLIGHT_QUERY
             );
+            self.register("cpp", tree_sitter_cpp::LANGUAGE.into(), &cpp_query, "", "");
         }
 
         // Java
@@ -405,12 +403,7 @@ impl SyntaxEngine {
 
         let mut symbols = Vec::new();
         let source_bytes = source.as_bytes();
-        collect_symbols(
-            tree.root_node(),
-            source_bytes,
-            language_key,
-            &mut symbols,
-        );
+        collect_symbols(tree.root_node(), source_bytes, language_key, &mut symbols);
         symbols
     }
 
@@ -452,11 +445,7 @@ impl SyntaxEngine {
 
     /// Highlight source text, returning per-line spans.
     /// `language_key` should come from `language_key()`, not the display name.
-    pub fn highlight_lines(
-        &mut self,
-        source: &str,
-        language_key: &str,
-    ) -> Vec<Vec<HighlightSpan>> {
+    pub fn highlight_lines(&mut self, source: &str, language_key: &str) -> Vec<Vec<HighlightSpan>> {
         let config = match self.configs.get(language_key) {
             Some(c) => c,
             None => return Vec::new(),
@@ -464,12 +453,13 @@ impl SyntaxEngine {
 
         // Pre-compute line start byte offsets
         let line_starts: Vec<usize> = std::iter::once(0)
-            .chain(
-                source
-                    .bytes()
-                    .enumerate()
-                    .filter_map(|(i, b)| if b == b'\n' { Some(i + 1) } else { None }),
-            )
+            .chain(source.bytes().enumerate().filter_map(|(i, b)| {
+                if b == b'\n' {
+                    Some(i + 1)
+                } else {
+                    None
+                }
+            }))
             .collect();
         let num_lines = line_starts.len();
         let mut result: Vec<Vec<HighlightSpan>> = vec![Vec::new(); num_lines];
@@ -683,7 +673,10 @@ fn extract_symbol_name(
     if language_key == "rust" && kind == "impl_item" {
         // Try to find the "type" field (the type being implemented)
         if let Some(type_node) = node.child_by_field_name("type") {
-            return type_node.utf8_text(source).ok().map(|s| format!("impl {}", s));
+            return type_node
+                .utf8_text(source)
+                .ok()
+                .map(|s| format!("impl {}", s));
         }
         // Fallback: look for "trait" field for trait implementations
         if let Some(trait_node) = node.child_by_field_name("trait") {
@@ -757,7 +750,11 @@ fn add_spans_for_byte_range(
     let end_line = match line_starts.binary_search(&end_byte) {
         Ok(i) => {
             // end_byte is exactly at a line start — span ends at end of previous line
-            if i > 0 { i - 1 } else { 0 }
+            if i > 0 {
+                i - 1
+            } else {
+                0
+            }
         }
         Err(i) => i.saturating_sub(1),
     };
@@ -893,11 +890,18 @@ mod tests {
         assert!(!line0.is_empty(), "Line 0 should have highlights");
 
         // "fn" at col 0..2 should be keyword (index 11)
-        let keyword_idx = HIGHLIGHT_NAMES.iter().position(|&n| n == "keyword").unwrap();
+        let keyword_idx = HIGHLIGHT_NAMES
+            .iter()
+            .position(|&n| n == "keyword")
+            .unwrap();
         let has_fn_keyword = line0
             .iter()
             .any(|s| s.highlight_idx == keyword_idx && s.start_col == 0 && s.end_col == 2);
-        assert!(has_fn_keyword, "Should find 'fn' as keyword, got: {:?}", line0);
+        assert!(
+            has_fn_keyword,
+            "Should find 'fn' as keyword, got: {:?}",
+            line0
+        );
     }
 
     #[test]
@@ -908,7 +912,10 @@ mod tests {
 
         assert!(lines.len() >= 2);
 
-        let comment_idx = HIGHLIGHT_NAMES.iter().position(|&n| n == "comment").unwrap();
+        let comment_idx = HIGHLIGHT_NAMES
+            .iter()
+            .position(|&n| n == "comment")
+            .unwrap();
         let has_comment = lines[0].iter().any(|s| s.highlight_idx == comment_idx);
         assert!(has_comment, "Line 0 should have comment highlight");
 
@@ -981,20 +988,54 @@ mod utils {
         let symbols = engine.extract_symbols(source, "rust");
         let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
 
-        assert!(names.contains(&"main"), "Should find 'main', got: {:?}", names);
-        assert!(names.contains(&"Buffer"), "Should find struct 'Buffer', got: {:?}", names);
-        assert!(names.contains(&"Color"), "Should find enum 'Color', got: {:?}", names);
-        assert!(names.contains(&"Drawable"), "Should find trait 'Drawable', got: {:?}", names);
-        assert!(names.contains(&"MAX_SIZE"), "Should find const 'MAX_SIZE', got: {:?}", names);
-        assert!(names.contains(&"utils"), "Should find mod 'utils', got: {:?}", names);
+        assert!(
+            names.contains(&"main"),
+            "Should find 'main', got: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"Buffer"),
+            "Should find struct 'Buffer', got: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"Color"),
+            "Should find enum 'Color', got: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"Drawable"),
+            "Should find trait 'Drawable', got: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"MAX_SIZE"),
+            "Should find const 'MAX_SIZE', got: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"utils"),
+            "Should find mod 'utils', got: {:?}",
+            names
+        );
 
         // Check that functions inside impl are found
-        assert!(names.contains(&"new"), "Should find 'new' in impl, got: {:?}", names);
-        assert!(names.contains(&"len"), "Should find 'len' in impl, got: {:?}", names);
+        assert!(
+            names.contains(&"new"),
+            "Should find 'new' in impl, got: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"len"),
+            "Should find 'len' in impl, got: {:?}",
+            names
+        );
 
         // Check impl item itself
         assert!(
-            symbols.iter().any(|s| s.name.starts_with("impl") && s.kind == SymbolKind::Class),
+            symbols
+                .iter()
+                .any(|s| s.name.starts_with("impl") && s.kind == SymbolKind::Class),
             "Should find impl block, got: {:?}",
             names
         );
@@ -1004,8 +1045,14 @@ mod utils {
         assert_eq!(main_sym.line, 1, "main should be on line 1 (0-based)");
         assert_eq!(main_sym.kind, SymbolKind::Function);
 
-        let buffer_sym = symbols.iter().find(|s| s.name == "Buffer" && s.kind == SymbolKind::Struct).unwrap();
-        assert_eq!(buffer_sym.line, 5, "Buffer struct should be on line 5 (0-based)");
+        let buffer_sym = symbols
+            .iter()
+            .find(|s| s.name == "Buffer" && s.kind == SymbolKind::Struct)
+            .unwrap();
+        assert_eq!(
+            buffer_sym.line, 5,
+            "Buffer struct should be on line 5 (0-based)"
+        );
     }
 
     #[test]
@@ -1025,10 +1072,26 @@ def another_function(x, y):
         let symbols = engine.extract_symbols(source, "python");
         let names: Vec<&str> = symbols.iter().map(|s| s.name.as_str()).collect();
 
-        assert!(names.contains(&"hello"), "Should find 'hello', got: {:?}", names);
-        assert!(names.contains(&"MyClass"), "Should find 'MyClass', got: {:?}", names);
-        assert!(names.contains(&"method"), "Should find 'method', got: {:?}", names);
-        assert!(names.contains(&"another_function"), "Should find 'another_function', got: {:?}", names);
+        assert!(
+            names.contains(&"hello"),
+            "Should find 'hello', got: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"MyClass"),
+            "Should find 'MyClass', got: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"method"),
+            "Should find 'method', got: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"another_function"),
+            "Should find 'another_function', got: {:?}",
+            names
+        );
 
         let class_sym = symbols.iter().find(|s| s.name == "MyClass").unwrap();
         assert_eq!(class_sym.kind, SymbolKind::Class);
@@ -1041,14 +1104,20 @@ def another_function(x, y):
     fn test_extract_symbols_unknown_language() {
         let mut engine = SyntaxEngine::new();
         let symbols = engine.extract_symbols("some text", "nonexistent");
-        assert!(symbols.is_empty(), "Unknown language should return empty symbols");
+        assert!(
+            symbols.is_empty(),
+            "Unknown language should return empty symbols"
+        );
     }
 
     #[test]
     fn test_extract_symbols_empty_source() {
         let mut engine = SyntaxEngine::new();
         let symbols = engine.extract_symbols("", "rust");
-        assert!(symbols.is_empty(), "Empty source should return empty symbols");
+        assert!(
+            symbols.is_empty(),
+            "Empty source should return empty symbols"
+        );
     }
 
     #[test]
@@ -1064,10 +1133,14 @@ def another_function(x, y):
     #[test]
     fn test_highlight_java() {
         let mut engine = SyntaxEngine::new();
-        let source = "public class Hello {\n    public static void main(String[] args) {\n    }\n}\n";
+        let source =
+            "public class Hello {\n    public static void main(String[] args) {\n    }\n}\n";
         let lines = engine.highlight_lines(source, "java");
         assert!(!lines.is_empty());
-        let keyword_idx = HIGHLIGHT_NAMES.iter().position(|&n| n == "keyword").unwrap();
+        let keyword_idx = HIGHLIGHT_NAMES
+            .iter()
+            .position(|&n| n == "keyword")
+            .unwrap();
         let has_keyword = lines[0].iter().any(|s| s.highlight_idx == keyword_idx);
         assert!(has_keyword, "Java should highlight 'public' as keyword");
     }
@@ -1089,7 +1162,10 @@ def another_function(x, y):
         let source = "def hello\n  puts \"world\"\nend\n";
         let lines = engine.highlight_lines(source, "ruby");
         assert!(!lines.is_empty());
-        let keyword_idx = HIGHLIGHT_NAMES.iter().position(|&n| n == "keyword").unwrap();
+        let keyword_idx = HIGHLIGHT_NAMES
+            .iter()
+            .position(|&n| n == "keyword")
+            .unwrap();
         let has_keyword = lines[0].iter().any(|s| s.highlight_idx == keyword_idx);
         assert!(has_keyword, "Ruby should highlight 'def' as keyword");
     }
@@ -1124,7 +1200,10 @@ def another_function(x, y):
         let source = "-- comment\nlocal x = 42\nfunction hello()\n    print(x)\nend\n";
         let lines = engine.highlight_lines(source, "lua");
         assert!(!lines.is_empty());
-        let comment_idx = HIGHLIGHT_NAMES.iter().position(|&n| n == "comment").unwrap();
+        let comment_idx = HIGHLIGHT_NAMES
+            .iter()
+            .position(|&n| n == "comment")
+            .unwrap();
         let has_comment = lines[0].iter().any(|s| s.highlight_idx == comment_idx);
         assert!(has_comment, "Lua should highlight comment on line 0");
     }

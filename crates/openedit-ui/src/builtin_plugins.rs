@@ -1,8 +1,6 @@
 //! Built-in plugins that demonstrate the plugin system.
 
-use openedit_core::{
-    EditorEvent, Plugin, PluginAction, PluginCommand, PluginContext, PluginInfo,
-};
+use openedit_core::{EditorEvent, Plugin, PluginAction, PluginCommand, PluginContext, PluginInfo};
 
 /// Plugin that counts words in the active document.
 ///
@@ -286,7 +284,11 @@ mod tests {
         let action = plugin.execute_command("builtin.timestamp.insert_iso", &ctx);
         match action {
             PluginAction::InsertAtCursor(text) => {
-                assert!(text.contains("T"), "Expected ISO format with T separator: {}", text);
+                assert!(
+                    text.contains("T"),
+                    "Expected ISO format with T separator: {}",
+                    text
+                );
                 assert!(text.ends_with("Z"), "Expected UTC Z suffix: {}", text);
             }
             _ => panic!("Expected InsertAtCursor"),

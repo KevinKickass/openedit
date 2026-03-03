@@ -291,9 +291,15 @@ static ENGLISH: &[(&str, &str)] = &[
     ("dialog.reload", "Reload"),
     ("dialog.keep", "Keep"),
     ("dialog.unsaved_title", "Unsaved Changes"),
-    ("dialog.unsaved_message", "Do you want to save changes before closing?"),
+    (
+        "dialog.unsaved_message",
+        "Do you want to save changes before closing?",
+    ),
     ("dialog.file_changed_title", "File Changed"),
-    ("dialog.file_changed_message", "This file has been modified externally. Reload?"),
+    (
+        "dialog.file_changed_message",
+        "This file has been modified externally. Reload?",
+    ),
     // Search panel
     ("search.find", "Find:"),
     ("search.replace_with", "Replace:"),
@@ -353,10 +359,22 @@ static GERMAN: &[(&str, &str)] = &[
     ("view.zoom_in", "Vergr\u{00F6}\u{00DF}ern"),
     ("view.zoom_out", "Verkleinern"),
     // Selection menu
-    ("selection.add_cursor_above", "Cursor dar\u{00FC}ber hinzuf\u{00FC}gen"),
-    ("selection.add_cursor_below", "Cursor darunter hinzuf\u{00FC}gen"),
-    ("selection.select_all_occurrences", "Alle Vorkommen ausw\u{00E4}hlen"),
-    ("selection.add_next_occurrence", "N\u{00E4}chstes Vorkommen hinzuf\u{00FC}gen"),
+    (
+        "selection.add_cursor_above",
+        "Cursor dar\u{00FC}ber hinzuf\u{00FC}gen",
+    ),
+    (
+        "selection.add_cursor_below",
+        "Cursor darunter hinzuf\u{00FC}gen",
+    ),
+    (
+        "selection.select_all_occurrences",
+        "Alle Vorkommen ausw\u{00E4}hlen",
+    ),
+    (
+        "selection.add_next_occurrence",
+        "N\u{00E4}chstes Vorkommen hinzuf\u{00FC}gen",
+    ),
     // Go menu
     ("go.go_to_line", "Gehe zu Zeile"),
     ("go.go_to_file", "Gehe zu Datei"),
@@ -373,8 +391,14 @@ static GERMAN: &[(&str, &str)] = &[
     ("settings.tab_size", "Tabgr\u{00F6}\u{00DF}e"),
     ("settings.auto_save", "Automatisch speichern"),
     ("settings.language", "Sprache"),
-    ("settings.open_themes_folder", "Design-Ordner \u{00F6}ffnen\u{2026}"),
-    ("settings.create_theme", "Design aus aktuellem erstellen\u{2026}"),
+    (
+        "settings.open_themes_folder",
+        "Design-Ordner \u{00F6}ffnen\u{2026}",
+    ),
+    (
+        "settings.create_theme",
+        "Design aus aktuellem erstellen\u{2026}",
+    ),
     ("settings.reload_themes", "Designs neu laden"),
     // Help menu
     ("help.about", "\u{00DC}ber OpenEdit"),
@@ -406,9 +430,15 @@ static GERMAN: &[(&str, &str)] = &[
     ("dialog.reload", "Neu laden"),
     ("dialog.keep", "Behalten"),
     ("dialog.unsaved_title", "Ungespeicherte \u{00C4}nderungen"),
-    ("dialog.unsaved_message", "M\u{00F6}chten Sie die \u{00C4}nderungen vor dem Schlie\u{00DF}en speichern?"),
+    (
+        "dialog.unsaved_message",
+        "M\u{00F6}chten Sie die \u{00C4}nderungen vor dem Schlie\u{00DF}en speichern?",
+    ),
     ("dialog.file_changed_title", "Datei ge\u{00E4}ndert"),
-    ("dialog.file_changed_message", "Diese Datei wurde extern ge\u{00E4}ndert. Neu laden?"),
+    (
+        "dialog.file_changed_message",
+        "Diese Datei wurde extern ge\u{00E4}ndert. Neu laden?",
+    ),
     // Search panel
     ("search.find", "Suchen:"),
     ("search.replace_with", "Ersetzen:"),
@@ -422,7 +452,10 @@ static GERMAN: &[(&str, &str)] = &[
     // Command palette
     ("command_palette.hint", "Befehl eingeben\u{2026}"),
     // Settings: Change Language command
-    ("cmd.settings.change_language", "Einstellungen: Sprache \u{00E4}ndern"),
+    (
+        "cmd.settings.change_language",
+        "Einstellungen: Sprache \u{00E4}ndern",
+    ),
 ];
 
 // ── French translations (partial — menus, dialogs, common items) ────────
@@ -469,9 +502,18 @@ static FRENCH: &[(&str, &str)] = &[
     ("view.zoom_out", "Zoom arri\u{00E8}re"),
     // Selection menu
     ("selection.add_cursor_above", "Ajouter un curseur au-dessus"),
-    ("selection.add_cursor_below", "Ajouter un curseur en dessous"),
-    ("selection.select_all_occurrences", "S\u{00E9}lectionner toutes les occurrences"),
-    ("selection.add_next_occurrence", "Ajouter l'occurrence suivante"),
+    (
+        "selection.add_cursor_below",
+        "Ajouter un curseur en dessous",
+    ),
+    (
+        "selection.select_all_occurrences",
+        "S\u{00E9}lectionner toutes les occurrences",
+    ),
+    (
+        "selection.add_next_occurrence",
+        "Ajouter l'occurrence suivante",
+    ),
     // Go menu
     ("go.go_to_line", "Aller \u{00E0} la ligne"),
     ("go.go_to_file", "Aller au fichier"),
@@ -480,7 +522,10 @@ static FRENCH: &[(&str, &str)] = &[
     ("go.rename_symbol", "Renommer le symbole"),
     // Terminal menu
     ("terminal.new", "Nouveau terminal"),
-    ("terminal.send_selection", "Envoyer la s\u{00E9}lection au terminal"),
+    (
+        "terminal.send_selection",
+        "Envoyer la s\u{00E9}lection au terminal",
+    ),
     // Settings menu
     ("settings.theme", "Th\u{00E8}me"),
     ("settings.vim_mode", "Mode Vim"),
@@ -488,8 +533,14 @@ static FRENCH: &[(&str, &str)] = &[
     ("settings.tab_size", "Taille de tabulation"),
     ("settings.auto_save", "Sauvegarde automatique"),
     ("settings.language", "Langue"),
-    ("settings.open_themes_folder", "Ouvrir le dossier des th\u{00E8}mes\u{2026}"),
-    ("settings.create_theme", "Cr\u{00E9}er un th\u{00E8}me depuis l'actuel\u{2026}"),
+    (
+        "settings.open_themes_folder",
+        "Ouvrir le dossier des th\u{00E8}mes\u{2026}",
+    ),
+    (
+        "settings.create_theme",
+        "Cr\u{00E9}er un th\u{00E8}me depuis l'actuel\u{2026}",
+    ),
     ("settings.reload_themes", "Recharger les th\u{00E8}mes"),
     // Help menu
     ("help.about", "\u{00C0} propos d'OpenEdit"),
@@ -498,7 +549,10 @@ static FRENCH: &[(&str, &str)] = &[
     ("status.line", "Ln"),
     ("status.col", "Col"),
     ("status.chars_selected", "caract\u{00E8}res"),
-    ("status.lines_selected", "lignes s\u{00E9}lectionn\u{00E9}es"),
+    (
+        "status.lines_selected",
+        "lignes s\u{00E9}lectionn\u{00E9}es",
+    ),
     ("status.read_only", "LECTURE SEULE"),
     ("status.recording", "ENR"),
     ("status.plain_text", "Texte brut"),
@@ -512,10 +566,19 @@ static FRENCH: &[(&str, &str)] = &[
     ("dialog.close", "Fermer"),
     ("dialog.reload", "Recharger"),
     ("dialog.keep", "Garder"),
-    ("dialog.unsaved_title", "Modifications non enregistr\u{00E9}es"),
-    ("dialog.unsaved_message", "Voulez-vous enregistrer les modifications avant de fermer\u{00A0}?"),
+    (
+        "dialog.unsaved_title",
+        "Modifications non enregistr\u{00E9}es",
+    ),
+    (
+        "dialog.unsaved_message",
+        "Voulez-vous enregistrer les modifications avant de fermer\u{00A0}?",
+    ),
     ("dialog.file_changed_title", "Fichier modifi\u{00E9}"),
-    ("dialog.file_changed_message", "Ce fichier a \u{00E9}t\u{00E9} modifi\u{00E9} en externe. Recharger\u{00A0}?"),
+    (
+        "dialog.file_changed_message",
+        "Ce fichier a \u{00E9}t\u{00E9} modifi\u{00E9} en externe. Recharger\u{00A0}?",
+    ),
     // Search panel
     ("search.find", "Rechercher\u{00A0}:"),
     ("search.replace_with", "Remplacer\u{00A0}:"),
@@ -529,7 +592,10 @@ static FRENCH: &[(&str, &str)] = &[
     // Command palette
     ("command_palette.hint", "Saisissez une commande\u{2026}"),
     // Settings: Change Language command
-    ("cmd.settings.change_language", "Param\u{00E8}tres\u{00A0}: Changer la langue"),
+    (
+        "cmd.settings.change_language",
+        "Param\u{00E8}tres\u{00A0}: Changer la langue",
+    ),
 ];
 
 // ── Spanish translations (partial — menus, dialogs) ─────────────────────
@@ -577,8 +643,14 @@ static SPANISH: &[(&str, &str)] = &[
     // Selection menu
     ("selection.add_cursor_above", "A\u{00F1}adir cursor arriba"),
     ("selection.add_cursor_below", "A\u{00F1}adir cursor abajo"),
-    ("selection.select_all_occurrences", "Seleccionar todas las ocurrencias"),
-    ("selection.add_next_occurrence", "A\u{00F1}adir siguiente ocurrencia"),
+    (
+        "selection.select_all_occurrences",
+        "Seleccionar todas las ocurrencias",
+    ),
+    (
+        "selection.add_next_occurrence",
+        "A\u{00F1}adir siguiente ocurrencia",
+    ),
     // Go menu
     ("go.go_to_line", "Ir a l\u{00ED}nea"),
     ("go.go_to_file", "Ir a archivo"),
@@ -587,7 +659,10 @@ static SPANISH: &[(&str, &str)] = &[
     ("go.rename_symbol", "Renombrar s\u{00ED}mbolo"),
     // Terminal menu
     ("terminal.new", "Nuevo terminal"),
-    ("terminal.send_selection", "Enviar selecci\u{00F3}n al terminal"),
+    (
+        "terminal.send_selection",
+        "Enviar selecci\u{00F3}n al terminal",
+    ),
     // Settings menu
     ("settings.theme", "Tema"),
     ("settings.vim_mode", "Modo Vim"),
@@ -595,8 +670,14 @@ static SPANISH: &[(&str, &str)] = &[
     ("settings.tab_size", "Tama\u{00F1}o de tabulaci\u{00F3}n"),
     ("settings.auto_save", "Guardado autom\u{00E1}tico"),
     ("settings.language", "Idioma"),
-    ("settings.open_themes_folder", "Abrir carpeta de temas\u{2026}"),
-    ("settings.create_theme", "Crear tema desde el actual\u{2026}"),
+    (
+        "settings.open_themes_folder",
+        "Abrir carpeta de temas\u{2026}",
+    ),
+    (
+        "settings.create_theme",
+        "Crear tema desde el actual\u{2026}",
+    ),
     ("settings.reload_themes", "Recargar temas"),
     // Help menu
     ("help.about", "Acerca de OpenEdit"),
@@ -612,9 +693,15 @@ static SPANISH: &[(&str, &str)] = &[
     ("dialog.reload", "Recargar"),
     ("dialog.keep", "Mantener"),
     ("dialog.unsaved_title", "Cambios sin guardar"),
-    ("dialog.unsaved_message", "\u{00BF}Desea guardar los cambios antes de cerrar?"),
+    (
+        "dialog.unsaved_message",
+        "\u{00BF}Desea guardar los cambios antes de cerrar?",
+    ),
     ("dialog.file_changed_title", "Archivo modificado"),
-    ("dialog.file_changed_message", "Este archivo ha sido modificado externamente. \u{00BF}Recargar?"),
+    (
+        "dialog.file_changed_message",
+        "Este archivo ha sido modificado externamente. \u{00BF}Recargar?",
+    ),
     // Search panel
     ("search.find", "Buscar:"),
     ("search.replace_with", "Reemplazar:"),
@@ -628,7 +715,10 @@ static SPANISH: &[(&str, &str)] = &[
     // Command palette
     ("command_palette.hint", "Escriba un comando\u{2026}"),
     // Settings: Change Language command
-    ("cmd.settings.change_language", "Configuraci\u{00F3}n: Cambiar idioma"),
+    (
+        "cmd.settings.change_language",
+        "Configuraci\u{00F3}n: Cambiar idioma",
+    ),
 ];
 
 // ── Japanese translations (partial — menus, dialogs) ────────────────────
