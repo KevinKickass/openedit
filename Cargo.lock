@@ -2738,6 +2738,7 @@ dependencies = [
  "chardetng",
  "encoding_rs",
  "log",
+ "memmap2",
  "regex",
  "ropey",
  "serde",

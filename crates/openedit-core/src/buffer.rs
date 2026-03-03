@@ -1,5 +1,10 @@
+use memmap2::Mmap;
 use ropey::Rope;
+use std::fs::File;
 use std::ops::Range;
+use std::path::Path;
+
+const LARGE_FILE_THRESHOLD: usize = 100 * 1024 * 1024; // 100 MB
 
 /// Rope-based text buffer wrapping `ropey::Rope`.
 ///
@@ -12,9 +17,7 @@ pub struct Buffer {
 
 impl Buffer {
     pub fn new() -> Self {
-        Self {
-            rope: Rope::new(),
-        }
+        Self { rope: Rope::new() }
     }
 
     pub fn from_str(text: &str) -> Self {
@@ -134,6 +137,36 @@ impl Buffer {
     pub fn replace(&mut self, range: Range<usize>, text: &str) {
         self.rope.remove(range.clone());
         self.rope.insert(range.start, text);
+    }
+
+    /// Load a file from the given path, using memory mapping for large files.
+    /// Falls back to regular loading for small files or if memory mapping fails.
+    pub fn load_file(path: &Path) -> std::io::Result<Self> {
+        let metadata = std::fs::metadata(path)?;
+        let file_size = metadata.len() as usize;
+
+        if file_size >= LARGE_FILE_THRESHOLD {
+            log::info!(
+                "Loading large file ({} MB) with memory mapping: {}",
+                file_size / (1024 * 1024),
+                path.display()
+            );
+            return Self::load_file_mmap(path);
+        }
+
+        // Small file: use regular loading
+        let text = std::fs::read_to_string(path)?;
+        Ok(Self::from_str(&text))
+    }
+
+    /// Load a file using memory mapping (for large files).
+    fn load_file_mmap(path: &Path) -> std::io::Result<Self> {
+        let file = File::open(path)?;
+        let mmap = unsafe { Mmap::map(&file)? };
+
+        // Convert bytes to string, handling encoding
+        let text = String::from_utf8_lossy(&mmap).to_string();
+        Ok(Self::from_str(&text))
     }
 }
 
