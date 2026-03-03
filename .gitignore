@@ -43,5 +43,8 @@ target/
 *.swp
 *.swo
 
+# Claude Code
+.claude/
+
 # Ralph backup directories (created by migration)
 .ralph_backup_*
