@@ -13,6 +13,7 @@ use crate::go_to_symbol::{self, GoToSymbolState};
 use crate::hex_view::{self, HexViewState};
 use crate::lsp::{LspManager, ReferencesState, RenameDialogState};
 use crate::macro_recorder::{actions_from_script, actions_to_script, MacroAction, MacroRecorder};
+use crate::plugin_panel::{self, PluginPanelState};
 use crate::search_panel::{self, SearchPanelState};
 use crate::sidebar::{self, SidebarState};
 use crate::snippets::SnippetEngine;
@@ -176,6 +177,8 @@ pub struct OpenEditApp {
     plugin_status_message_time: Option<std::time::Instant>,
     /// Track the last active tab index for TabChanged event broadcasting.
     last_active_tab: usize,
+    /// Plugin management panel state.
+    plugin_panel_state: PluginPanelState,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -325,7 +328,11 @@ impl OpenEditApp {
             plugin_status_message: None,
             plugin_status_message_time: None,
             last_active_tab: 0,
+            plugin_panel_state: PluginPanelState::default(),
         };
+
+        // Load external plugins from config directory
+        openedit_core::load_plugins(&mut app.plugin_manager);
 
         // Register built-in plugins
         let _ = app.plugin_manager.register(Box::new(builtin_plugins::WordCounterPlugin::new()));
@@ -1522,6 +1529,9 @@ impl OpenEditApp {
                 }
             }
             // Plugin management commands
+            "plugins.manage" => {
+                self.plugin_panel_state.visible = true;
+            }
             "plugins.list" => {
                 let list = self.plugin_manager.list();
                 if list.is_empty() {
@@ -4267,6 +4277,45 @@ impl eframe::App for OpenEditApp {
             } else {
                 self.git_status_message = None;
                 self.git_status_message_time = None;
+            }
+        }
+
+        // Plugin management panel
+        if self.plugin_panel_state.visible {
+            let panel_action = plugin_panel::render_plugin_panel(
+                ctx,
+                &mut self.plugin_panel_state,
+                &mut self.plugin_manager,
+                &self.theme,
+            );
+            match panel_action {
+                plugin_panel::PluginPanelAction::ReloadPlugins => {
+                    self.plugin_manager
+                        .broadcast_event(&EditorEvent::Startup);
+                }
+                plugin_panel::PluginPanelAction::OpenPluginsFolder => {
+                    let dir = plugin_panel::plugins_dir();
+                    let _ = std::fs::create_dir_all(&dir);
+                    #[cfg(target_os = "linux")]
+                    {
+                        let _ = std::process::Command::new("xdg-open")
+                            .arg(&dir)
+                            .spawn();
+                    }
+                    #[cfg(target_os = "macos")]
+                    {
+                        let _ = std::process::Command::new("open")
+                            .arg(&dir)
+                            .spawn();
+                    }
+                    #[cfg(target_os = "windows")]
+                    {
+                        let _ = std::process::Command::new("explorer")
+                            .arg(&dir)
+                            .spawn();
+                    }
+                }
+                plugin_panel::PluginPanelAction::None => {}
             }
         }
 

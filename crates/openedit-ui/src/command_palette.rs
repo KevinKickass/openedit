@@ -582,6 +582,12 @@ pub fn all_commands() -> Vec<Command> {
             label: "Theme: Reload User Themes".into(),
             shortcut: "",
         },
+        // Plugins
+        Command {
+            id: "plugins.manage".into(),
+            label: "Plugins: Manage Plugins".into(),
+            shortcut: "",
+        },
         // Theme selector (individual built-in themes)
         Command {
             id: "view.theme.monokai".into(),
