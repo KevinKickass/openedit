@@ -19,7 +19,7 @@ pub fn render_gutter(
     bookmarks: &[usize],
 ) -> f32 {
     let digit_count = format!("{}", total_lines).len().max(3);
-    let char_width = crate::editor_view::char_width_for_font(font_size);
+    let char_width = crate::editor_view::measure_char_width(ui, font_size);
     // Extra space for fold indicator column
     let fold_col_width = char_width * 1.5;
     let gutter_width = (digit_count as f32 + 2.0) * char_width + fold_col_width;

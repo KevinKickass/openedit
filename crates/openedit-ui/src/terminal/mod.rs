@@ -196,8 +196,8 @@ impl Drop for TerminalState {
 /// Render the terminal panel with tab bar.
 pub fn render_terminal(ui: &mut egui::Ui, state: &mut TerminalState, font_size: f32) {
     let rect = ui.available_rect_before_wrap();
-    let char_width = crate::editor_view::char_width_for_font(font_size);
-    let line_height = crate::editor_view::line_height_for_font(font_size);
+    let char_width = crate::editor_view::measure_char_width(ui, font_size);
+    let line_height = crate::editor_view::measure_line_height(ui, font_size);
     let font_id = egui::FontId::monospace(font_size);
 
     // Background

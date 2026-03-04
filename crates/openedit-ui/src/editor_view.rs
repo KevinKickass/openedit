@@ -20,14 +20,34 @@ struct VisualRow {
     is_first: bool,
 }
 
-/// Compute line height from font size.
+/// Compute line height from font size (fallback when no UI context is available).
 pub fn line_height_for_font(font_size: f32) -> f32 {
     (font_size * 1.385).round() // ~18 at size 13
 }
 
-/// Compute monospace character width from font size.
+/// Compute monospace character width from font size (fallback when no UI context is available).
 pub fn char_width_for_font(font_size: f32) -> f32 {
-    font_size * 0.646 // ~8.4 at size 13
+    font_size * 0.6 // approximate fallback
+}
+
+/// Measure the actual monospace character width using egui font metrics.
+pub fn measure_char_width(ui: &Ui, font_size: f32) -> f32 {
+    let font_id = egui::FontId::monospace(font_size);
+    ui.fonts(|fonts| {
+        fonts
+            .layout_no_wrap("M".to_string(), font_id, egui::Color32::WHITE)
+            .rect
+            .width()
+    })
+}
+
+/// Measure the actual line height (row height) using egui font metrics.
+pub fn measure_line_height(ui: &Ui, font_size: f32) -> f32 {
+    let font_id = egui::FontId::monospace(font_size);
+    ui.fonts(|fonts| {
+        let galley = fonts.layout_no_wrap("M".to_string(), font_id, egui::Color32::WHITE);
+        galley.rect.height()
+    })
 }
 
 /// Persistent state for the editor view (e.g., drag tracking).
@@ -80,8 +100,8 @@ pub fn render_editor(
     snippet_engine: &mut SnippetEngine,
     vim_state: Option<&mut VimState>,
 ) -> bool {
-    let line_height = line_height_for_font(font_size);
-    let char_width = char_width_for_font(font_size);
+    let line_height = measure_line_height(ui, font_size);
+    let char_width = measure_char_width(ui, font_size);
     let rect = ui.available_rect_before_wrap();
 
     // Background

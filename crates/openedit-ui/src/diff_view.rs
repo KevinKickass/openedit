@@ -1,4 +1,4 @@
-use crate::editor_view::{char_width_for_font, line_height_for_font};
+use crate::editor_view::{measure_char_width, measure_line_height};
 use crate::theme::EditorTheme;
 use egui::{self, Color32, Pos2, Rect, Vec2};
 use openedit_core::diff::{diff_lines, DiffOp};
@@ -388,8 +388,8 @@ pub fn render_diff_view(
         state.current_hunk = 0;
     }
 
-    let line_height = line_height_for_font(font_size);
-    let char_width = char_width_for_font(font_size);
+    let line_height = measure_line_height(ui, font_size);
+    let char_width = measure_char_width(ui, font_size);
     let font_id = egui::FontId::monospace(font_size);
 
     let (left_rows, right_rows) = build_rows(&state.diff_ops, &state.hunks, theme);
