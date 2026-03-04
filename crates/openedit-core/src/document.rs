@@ -801,7 +801,13 @@ impl Document {
 
     /// Recompute fold ranges from current buffer content.
     pub fn update_fold_ranges(&mut self) {
-        let lines: Vec<String> = (0..self.buffer.len_lines())
+        // Skip folding computation for large files (>100K lines) — too expensive
+        const MAX_FOLD_LINES: usize = 100_000;
+        let n = self.buffer.len_lines();
+        if n > MAX_FOLD_LINES {
+            return;
+        }
+        let lines: Vec<String> = (0..n)
             .map(|i| self.buffer.line(i).to_string())
             .collect();
         self.folding.compute_fold_ranges(&lines);

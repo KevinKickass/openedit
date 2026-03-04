@@ -110,14 +110,6 @@ pub fn render_editor(
     let total_lines = doc.buffer.len_lines();
     let current_line = doc.cursors.primary().position.line;
 
-    // Update fold ranges from buffer content
-    doc.update_fold_ranges();
-
-    // Build the full list of visible (not-hidden) line indices
-    let all_visible_lines: Vec<usize> = (0..total_lines)
-        .filter(|&l| !doc.folding.is_line_hidden(l))
-        .collect();
-
     // Preliminary gutter width calculation (needed for wrap column count)
     let digit_count = format!("{}", total_lines).len().max(3);
     let fold_col_width = char_width * 1.5;
@@ -131,55 +123,125 @@ pub fn render_editor(
         usize::MAX // effectively no wrapping
     };
 
-    // Build all visual rows for visible (non-hidden) lines
-    let mut all_visual_rows: Vec<VisualRow> = Vec::new();
-    for &line_idx in &all_visible_lines {
-        if word_wrap {
-            let line = doc.buffer.line(line_idx);
-            let line_str = line.to_string();
-            let display = line_str.trim_end_matches(&['\n', '\r'][..]);
-            let char_count = display.chars().count();
-            if char_count == 0 {
-                all_visual_rows.push(VisualRow {
-                    line_idx,
+    let visible_lines = (rect.height() / line_height).ceil() as usize;
+
+    // Efficiently compute total visual rows and the displayed window without
+    // allocating a Vec for every line in the document.
+    let has_folds = !doc.folding.folded_lines.is_empty();
+
+    // Count visual rows per non-hidden line, yielding (visual_row_count, line_idx).
+    // For no-wrap without folds (the common fast path), each line is 1 visual row.
+    let total_visual_rows: usize;
+    let mut displayed_vrows_owned: Vec<(usize, VisualRow)>;
+
+    if !word_wrap && !has_folds {
+        // Fast path: 1 visual row per line, no folds
+        total_visual_rows = total_lines;
+        let max_scroll = total_visual_rows.saturating_sub(visible_lines);
+        doc.scroll_line = doc.scroll_line.min(max_scroll);
+        let first = doc.scroll_line;
+        let count = (visible_lines + 1).min(total_lines.saturating_sub(first));
+        displayed_vrows_owned = Vec::with_capacity(count);
+        for screen_row in 0..count {
+            displayed_vrows_owned.push((
+                screen_row,
+                VisualRow {
+                    line_idx: first + screen_row,
                     col_offset: 0,
                     is_first: true,
-                });
+                },
+            ));
+        }
+    } else {
+        // General path: iterate non-hidden lines, compute visual rows per line.
+        // We count total visual rows for scroll, and collect only the displayed window.
+        let mut total_vrows = 0usize;
+        let mut window_rows: Vec<(usize, VisualRow)> = Vec::new();
+        let need = visible_lines + 1;
+
+        for line_idx in 0..total_lines {
+            if has_folds && doc.folding.is_line_hidden(line_idx) {
+                continue;
+            }
+            let vrow_count = if word_wrap {
+                let char_count = doc.buffer.line_len_chars_no_newline(line_idx);
+                if char_count == 0 { 1 } else { (char_count + wrap_cols - 1) / wrap_cols }
             } else {
-                let mut offset = 0;
-                let mut first = true;
-                while offset < char_count {
-                    all_visual_rows.push(VisualRow {
-                        line_idx,
-                        col_offset: offset,
-                        is_first: first,
-                    });
-                    offset += wrap_cols;
-                    first = false;
+                1
+            };
+
+            let row_start = total_vrows;
+            total_vrows += vrow_count;
+
+            // Check if any visual rows from this line fall in the displayed window
+            let window_start = doc.scroll_line; // preliminary; clamped below
+            // We collect a bit more than needed and trim after clamping
+            if total_vrows > window_start && window_rows.len() < need + vrow_count {
+                for v in 0..vrow_count {
+                    let global_vrow = row_start + v;
+                    if global_vrow >= window_start && window_rows.len() < need {
+                        window_rows.push((
+                            window_rows.len(),
+                            VisualRow {
+                                line_idx,
+                                col_offset: if word_wrap { v * wrap_cols } else { 0 },
+                                is_first: v == 0,
+                            },
+                        ));
+                    }
                 }
             }
+        }
+
+        total_visual_rows = total_vrows;
+        let max_scroll = total_visual_rows.saturating_sub(visible_lines);
+        doc.scroll_line = doc.scroll_line.min(max_scroll);
+        // If scroll was clamped, we may need to rebuild the window (rare edge case at end of file)
+        if doc.scroll_line < total_visual_rows.saturating_sub(visible_lines + 1)
+            || window_rows.len() >= need
+        {
+            displayed_vrows_owned = window_rows;
         } else {
-            all_visual_rows.push(VisualRow {
-                line_idx,
-                col_offset: 0,
-                is_first: true,
-            });
+            // Rebuild for clamped scroll position (only happens when scrolling past end)
+            displayed_vrows_owned = Vec::new();
+            let mut vrow_idx = 0usize;
+            for line_idx in 0..total_lines {
+                if has_folds && doc.folding.is_line_hidden(line_idx) {
+                    continue;
+                }
+                let vrow_count = if word_wrap {
+                    let char_count = doc.buffer.line_len_chars_no_newline(line_idx);
+                    if char_count == 0 { 1 } else { (char_count + wrap_cols - 1) / wrap_cols }
+                } else {
+                    1
+                };
+                for v in 0..vrow_count {
+                    if vrow_idx >= doc.scroll_line {
+                        displayed_vrows_owned.push((
+                            displayed_vrows_owned.len(),
+                            VisualRow {
+                                line_idx,
+                                col_offset: if word_wrap { v * wrap_cols } else { 0 },
+                                is_first: v == 0,
+                            },
+                        ));
+                        if displayed_vrows_owned.len() >= need {
+                            break;
+                        }
+                    }
+                    vrow_idx += 1;
+                }
+                if displayed_vrows_owned.len() >= need {
+                    break;
+                }
+            }
         }
     }
-    let total_visual_rows = all_visual_rows.len();
 
-    // Calculate visible line range based on visual row count
-    let visible_lines = (rect.height() / line_height).ceil() as usize;
-    let max_scroll = total_visual_rows.saturating_sub(visible_lines);
-    doc.scroll_line = doc.scroll_line.min(max_scroll);
-    let first_visible_row = doc.scroll_line;
-
-    // Build displayed visual rows on screen
-    let displayed_vrows: Vec<(usize, &VisualRow)> = all_visual_rows
+    // Build a reference view matching the old API: Vec<(usize, &VisualRow)>
+    let displayed_vrows: Vec<(usize, &VisualRow)> = displayed_vrows_owned
         .iter()
-        .skip(first_visible_row)
-        .take(visible_lines + 1)
-        .enumerate()
+        .map(|(screen_row, vr)| (*screen_row, vr))
         .collect();
 
     // Build displayed_lines for gutter: only first visual rows of each line
@@ -328,11 +390,40 @@ pub fn render_editor(
         }
     }
 
-    // Compute syntax highlights (per-line spans with char-based columns)
-    let line_highlights: Vec<Vec<HighlightSpan>> = if let Some(ref lang_name) = doc.language {
+    // Compute syntax highlights only for displayed lines.
+    // Collect the range of line indices we need to highlight.
+    let displayed_line_range: Option<(usize, usize)> = {
+        let mut min_line = usize::MAX;
+        let mut max_line = 0usize;
+        for &(_, vr) in &displayed_vrows {
+            min_line = min_line.min(vr.line_idx);
+            max_line = max_line.max(vr.line_idx);
+        }
+        if min_line <= max_line {
+            Some((min_line, max_line))
+        } else {
+            None
+        }
+    };
+
+    let line_highlights: Vec<Vec<HighlightSpan>> = if doc.buffer.is_large_file() {
+        Vec::new() // Skip syntax highlighting for large files
+    } else if let Some(ref lang_name) = doc.language {
         if let Some(lang_key) = SyntaxEngine::language_key(lang_name) {
-            let source = doc.buffer.to_string();
-            syntax_engine.highlight_lines(&source, lang_key)
+            if let Some((first_line, last_line)) = displayed_line_range {
+                // Extract only the visible lines as a string for highlighting
+                let mut visible_source = String::new();
+                for li in first_line..=last_line {
+                    visible_source.push_str(&doc.buffer.line_str(li));
+                }
+                let mut spans = syntax_engine.highlight_lines(&visible_source, lang_key);
+                // Pad with empty vecs so line_highlights[line_idx] works
+                let mut padded = vec![Vec::new(); first_line];
+                padded.append(&mut spans);
+                padded
+            } else {
+                Vec::new()
+            }
         } else {
             Vec::new()
         }
@@ -349,20 +440,36 @@ pub fn render_editor(
     );
     let fold_ellipsis_color = theme.gutter_fg;
 
+    // How many columns can fit on screen (used to limit line extraction)
+    let screen_cols = ((rect.width() - gutter_width) / char_width).ceil() as usize + 10;
+
     for &(screen_row, vr) in &displayed_vrows {
         let y = rect.top() + screen_row as f32 * line_height;
-        let line = doc.buffer.line(vr.line_idx);
-        let line_str = line.to_string();
-        let display = line_str.trim_end_matches(&['\n', '\r'][..]);
 
-        // In word wrap mode, render only the chars for this visual row
-        let (visible_text_start, visible_text_end) = if word_wrap {
-            let char_count = display.chars().count();
-            (vr.col_offset, (vr.col_offset + wrap_cols).min(char_count))
+        // For large files, only fetch the visible slice of the line to avoid
+        // multi-MB allocations for extremely long lines.
+        let col_start = if word_wrap { vr.col_offset } else { scroll_col };
+        let max_cols = if word_wrap { wrap_cols } else { screen_cols };
+        let (line_str, display, visible_text_start, visible_text_end);
+
+        if doc.buffer.is_large_file() {
+            line_str = doc.buffer.line_str_visible(vr.line_idx, col_start, max_cols + 1);
+            display = line_str.trim_end_matches(&['\n', '\r'][..]);
+            visible_text_start = 0;
+            visible_text_end = display.chars().count();
         } else {
-            let char_count = display.chars().count();
-            (scroll_col, char_count)
-        };
+            line_str = doc.buffer.line_str(vr.line_idx);
+            display = line_str.trim_end_matches(&['\n', '\r'][..]);
+            if word_wrap {
+                let char_count = display.chars().count();
+                visible_text_start = vr.col_offset;
+                visible_text_end = (vr.col_offset + wrap_cols).min(char_count);
+            } else {
+                let char_count = display.chars().count();
+                visible_text_start = scroll_col;
+                visible_text_end = char_count;
+            }
+        }
 
         let spans = line_highlights.get(vr.line_idx);
         if spans.is_none_or(|s| s.is_empty()) {
@@ -451,8 +558,8 @@ pub fn render_editor(
         if !vr.is_first {
             continue;
         }
-        let line = doc.buffer.line(vr.line_idx);
-        let line_str = line.to_string();
+        // Only need the first ~200 chars to count indent
+        let line_str = doc.buffer.line_str_visible(vr.line_idx, 0, 200);
         let display = line_str.trim_end_matches(&['\n', '\r'][..]);
         let indent_chars = display.chars().take_while(|c| *c == ' ').count();
         let indent_levels = indent_chars / tab_size;
@@ -546,17 +653,11 @@ pub fn render_editor(
         }
     }
 
-    // Bracket pair colorization
-    let do_bracket_colors = render_ctx.is_some_and(|c| c.bracket_colorization);
+    // Bracket pair colorization (skip for large files — O(n) depth scan is too expensive)
+    let do_bracket_colors = render_ctx.is_some_and(|c| c.bracket_colorization)
+        && total_lines <= 100_000
+        && !doc.buffer.is_large_file();
     if do_bracket_colors {
-        // Collect all lines for bracket depth calculation
-        let all_line_strs: Vec<String> = (0..total_lines)
-            .map(|i| {
-                let l = doc.buffer.line(i).to_string();
-                l.trim_end_matches(&['\n', '\r'][..]).to_string()
-            })
-            .collect();
-        let all_refs: Vec<&str> = all_line_strs.iter().map(|s| s.as_str()).collect();
         let first_vis = displayed_vrows
             .first()
             .map(|&(_, vr)| vr.line_idx)
@@ -565,15 +666,49 @@ pub fn render_editor(
             .last()
             .map(|&(_, vr)| vr.line_idx + 1)
             .unwrap_or(0);
-        let colored = bracket_colors::colorize_brackets(&all_refs, first_vis, last_vis);
-        for (line_idx, brackets) in &colored {
+
+        // Compute bracket depth at start of visible region by scanning preceding lines.
+        let mut depth = 0usize;
+        for i in 0..first_vis {
+            let line_s = doc.buffer.line_str(i);
+            for ch in line_s.chars() {
+                match ch {
+                    '(' | '[' | '{' => depth += 1,
+                    ')' | ']' | '}' => depth = depth.saturating_sub(1),
+                    _ => {}
+                }
+            }
+        }
+
+        // Colorize only the visible lines
+        let mut visible_line_strs: Vec<(usize, String)> = Vec::new();
+        for i in first_vis..last_vis.min(total_lines) {
+            let l = doc.buffer.line_str(i);
+            visible_line_strs.push((i, l.trim_end_matches(&['\n', '\r'][..]).to_string()));
+        }
+
+        let mut colored_results: Vec<(usize, Vec<bracket_colors::ColoredBracket>)> = Vec::new();
+        for (line_idx, line_str) in &visible_line_strs {
+            let (brackets, new_depth) =
+                bracket_colors::colorize_brackets_line(line_str, depth);
+            if !brackets.is_empty() {
+                colored_results.push((*line_idx, brackets));
+            }
+            depth = new_depth;
+        }
+
+        for (line_idx, brackets) in &colored_results {
             // Find the screen row for this line
             if let Some(&(screen_row, _vr)) = displayed_vrows
                 .iter()
                 .find(|(_, vr)| vr.line_idx == *line_idx && vr.is_first)
             {
                 let y = rect.top() + screen_row as f32 * line_height;
-                let line_str = &all_line_strs[*line_idx];
+                let line_str = &visible_line_strs
+                    .iter()
+                    .find(|(idx, _)| idx == line_idx)
+                    .unwrap()
+                    .1;
                 bracket_colors::render_bracket_colors(
                     ui, brackets, text_left, y, char_width, &font_id, scroll_col, line_str,
                 );
@@ -673,7 +808,7 @@ pub fn render_editor(
     }
 
     if let Some(target) = minimap_scroll_target {
-        doc.scroll_line = target.min(max_scroll);
+        doc.scroll_line = target.min(total_visual_rows.saturating_sub(visible_lines));
     }
 
     // Render cursors (all cursors, not just primary)
@@ -847,7 +982,7 @@ pub fn render_editor(
         let lines_delta = -(scroll_delta.y / line_height * 3.0) as isize;
         let new_scroll = (doc.scroll_line as isize + lines_delta)
             .max(0)
-            .min(max_scroll as isize) as usize;
+            .min(total_visual_rows.saturating_sub(visible_lines) as isize) as usize;
         doc.scroll_line = new_scroll;
     }
 
@@ -887,7 +1022,7 @@ pub fn render_editor(
     // When the user scrolls with the mouse, cursor_moved_by_keyboard is false,
     // so we don't fight the scroll by pulling the viewport back to the cursor.
     if cursor_moved_by_keyboard {
-        ensure_cursor_visible_wrapped(doc, visible_lines, &all_visual_rows, word_wrap, wrap_cols);
+        ensure_cursor_visible_wrapped(doc, visible_lines, total_lines, word_wrap, wrap_cols);
     }
 
     modified
@@ -1890,45 +2025,42 @@ fn is_bracket(c: char) -> bool {
 fn ensure_cursor_visible_wrapped(
     doc: &mut Document,
     visible_lines: usize,
-    all_visual_rows: &[VisualRow],
+    total_lines: usize,
     word_wrap: bool,
     wrap_cols: usize,
 ) {
     let cursor_line = doc.cursors.primary().position.line;
     let cursor_col = doc.cursors.primary().position.col;
     let margin = 3;
+    let has_folds = !doc.folding.folded_lines.is_empty();
 
-    // Find the visual row index for the cursor position
-    let cursor_vis_row = if word_wrap {
-        // Find the visual row that contains this cursor column
-        all_visual_rows
-            .iter()
-            .position(|vr| {
-                vr.line_idx == cursor_line
-                    && cursor_col >= vr.col_offset
-                    && cursor_col < vr.col_offset + wrap_cols
-            })
-            .or_else(|| {
-                // Cursor at end of line: find last visual row for this line
-                all_visual_rows
-                    .iter()
-                    .enumerate()
-                    .rfind(|(_, vr)| vr.line_idx == cursor_line)
-                    .map(|(i, _)| i)
-            })
+    // Compute the visual row index for the cursor.
+    let cursor_vis_row = if !word_wrap && !has_folds {
+        // Fast path: visual row == line index
+        cursor_line
     } else {
-        all_visual_rows
-            .iter()
-            .position(|vr| vr.line_idx == cursor_line)
+        // Slow path: iterate up to cursor_line accounting for folds and word wrap.
+        let mut vrow = 0usize;
+        for line_idx in 0..cursor_line.min(total_lines) {
+            if has_folds && doc.folding.is_line_hidden(line_idx) {
+                continue;
+            }
+            let vrow_count = if word_wrap {
+                let char_count = doc.buffer.line_len_chars_no_newline(line_idx);
+                if char_count == 0 { 1 } else { (char_count + wrap_cols - 1) / wrap_cols }
+            } else {
+                1
+            };
+            vrow += vrow_count;
+        }
+        // Add sub-row offset for word wrap within the cursor's line
+        if word_wrap && wrap_cols > 0 && cursor_line < total_lines {
+            let char_count = doc.buffer.line_len_chars_no_newline(cursor_line);
+            let vrow_count = if char_count == 0 { 1 } else { (char_count + wrap_cols - 1) / wrap_cols };
+            vrow += (cursor_col / wrap_cols).min(vrow_count - 1);
+        }
+        vrow
     };
-
-    let cursor_vis_row = cursor_vis_row.unwrap_or_else(|| {
-        // Cursor is on a hidden line -- find nearest visible row
-        all_visual_rows
-            .iter()
-            .position(|vr| vr.line_idx >= cursor_line)
-            .unwrap_or(all_visual_rows.len().saturating_sub(1))
-    });
 
     if cursor_vis_row < doc.scroll_line + margin {
         doc.scroll_line = cursor_vis_row.saturating_sub(margin);

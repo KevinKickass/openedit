@@ -87,8 +87,7 @@ pub fn render_minimap_with_scroll(
 
     for line_idx in minimap_start..minimap_end {
         let y = minimap_rect.top() + (line_idx - minimap_start) as f32 * MINIMAP_CHAR_HEIGHT;
-        let line = doc.buffer.line(line_idx);
-        let line_str = line.to_string();
+        let line_str = doc.buffer.line_str(line_idx);
         let trimmed = line_str.trim_end_matches(&['\n', '\r'][..]);
 
         if trimmed.is_empty() {

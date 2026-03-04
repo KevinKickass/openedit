@@ -387,15 +387,47 @@ impl OpenEditApp {
     }
 
     fn open_file(&mut self, path: PathBuf) {
+        // Check if file is binary — open in hex view directly
+        let is_binary = Buffer::file_is_binary(&path).unwrap_or(false);
+        if is_binary {
+            match std::fs::read(&path) {
+                Ok(bytes) => {
+                    // Create an empty document as a tab placeholder
+                    let mut doc = Document::new();
+                    doc.path = Some(path.clone());
+                    self.documents.push(doc);
+                    self.active_tab = self.documents.len() - 1;
+
+                    // Activate hex view with the raw bytes
+                    self.hex_view_state.active = true;
+                    self.hex_view_state.data = bytes;
+                    self.hex_view_state.scroll_offset = 0.0;
+                    self.hex_view_state.selected_offset = None;
+
+                    self.save_session();
+                }
+                Err(e) => {
+                    log::error!("Failed to read binary file {}: {}", path.display(), e);
+                }
+            }
+            return;
+        }
+
         match Buffer::load_file(&path) {
             Ok(buffer) => {
+                let is_large = buffer.is_large_file();
                 let mut doc = Document::new();
                 doc.buffer = buffer;
                 doc.path = Some(path.clone());
+                if is_large {
+                    doc.read_only = true;
+                }
 
-                // Detect language from extension
-                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                    doc.language = Some(language_from_extension(ext));
+                // Detect language from extension (skip for large files)
+                if !is_large {
+                    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                        doc.language = Some(language_from_extension(ext));
+                    }
                 }
 
                 self.documents.push(doc);
@@ -3716,7 +3748,12 @@ impl eframe::App for OpenEditApp {
                     );
                     let source_for_preview;
                     if let Some(doc) = self.documents.get_mut(self.active_tab) {
-                        source_for_preview = doc.buffer.to_string();
+                        // Only copy full buffer for preview if it's not a large file
+                        source_for_preview = if doc.buffer.is_large_file() {
+                            "(Large file — preview unavailable)".to_string()
+                        } else {
+                            doc.buffer.to_string()
+                        };
                         let vim = if self.vim_state.enabled {
                             Some(&mut self.vim_state)
                         } else {

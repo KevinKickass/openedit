@@ -7,6 +7,8 @@
 
 A fast, lightweight, cross-platform text and code editor. Built with Rust.
 
+> ⚠️ **Early Alpha** — Actively under development. Expect rough edges and missing features.
+
 Opens instantly. Handles large files. Runs everywhere. No bloat.
 
 ## Features
