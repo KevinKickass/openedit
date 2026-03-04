@@ -104,12 +104,11 @@ impl Vt100Parser {
                 let next_tab = ((self.cursor_col / 8) + 1) * 8;
                 self.cursor_col = next_tab.min(self.cols - 1);
             }
-            0x08 => {
+            0x08
                 // Backspace
-                if self.cursor_col > 0 {
+                if self.cursor_col > 0 => {
                     self.cursor_col -= 1;
                 }
-            }
             0x07 => {
                 // Bell - ignore
             }

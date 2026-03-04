@@ -73,9 +73,7 @@ pub fn render_tab_bar(
                         egui::RichText::new(" \u{00D7}") // ×
                             .color(theme.tab_text.linear_multiply(0.6))
                             .size(13.0);
-                    let close_btn = egui::Button::new(close_text)
-                        .frame(false)
-                        .small();
+                    let close_btn = egui::Button::new(close_text).frame(false).small();
                     if ui.add(close_btn).on_hover_text("Close").clicked() {
                         response.close = Some(i);
                     }

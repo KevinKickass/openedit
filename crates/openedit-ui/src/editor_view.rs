@@ -165,7 +165,11 @@ pub fn render_editor(
             }
             let vrow_count = if word_wrap {
                 let char_count = doc.buffer.line_len_chars_no_newline(line_idx);
-                if char_count == 0 { 1 } else { (char_count + wrap_cols - 1) / wrap_cols }
+                if char_count == 0 {
+                    1
+                } else {
+                    char_count.div_ceil(wrap_cols)
+                }
             } else {
                 1
             };
@@ -175,7 +179,7 @@ pub fn render_editor(
 
             // Check if any visual rows from this line fall in the displayed window
             let window_start = doc.scroll_line; // preliminary; clamped below
-            // We collect a bit more than needed and trim after clamping
+                                                // We collect a bit more than needed and trim after clamping
             if total_vrows > window_start && window_rows.len() < need + vrow_count {
                 for v in 0..vrow_count {
                     let global_vrow = row_start + v;
@@ -211,7 +215,11 @@ pub fn render_editor(
                 }
                 let vrow_count = if word_wrap {
                     let char_count = doc.buffer.line_len_chars_no_newline(line_idx);
-                    if char_count == 0 { 1 } else { (char_count + wrap_cols - 1) / wrap_cols }
+                    if char_count == 0 {
+                        1
+                    } else {
+                        char_count.div_ceil(wrap_cols)
+                    }
                 } else {
                     1
                 };
@@ -453,7 +461,9 @@ pub fn render_editor(
         let (line_str, display, visible_text_start, visible_text_end);
 
         if doc.buffer.is_large_file() {
-            line_str = doc.buffer.line_str_visible(vr.line_idx, col_start, max_cols + 1);
+            line_str = doc
+                .buffer
+                .line_str_visible(vr.line_idx, col_start, max_cols + 1);
             display = line_str.trim_end_matches(&['\n', '\r'][..]);
             visible_text_start = 0;
             visible_text_end = display.chars().count();
@@ -689,8 +699,7 @@ pub fn render_editor(
 
         let mut colored_results: Vec<(usize, Vec<bracket_colors::ColoredBracket>)> = Vec::new();
         for (line_idx, line_str) in &visible_line_strs {
-            let (brackets, new_depth) =
-                bracket_colors::colorize_brackets_line(line_str, depth);
+            let (brackets, new_depth) = bracket_colors::colorize_brackets_line(line_str, depth);
             if !brackets.is_empty() {
                 colored_results.push((*line_idx, brackets));
             }
@@ -813,8 +822,8 @@ pub fn render_editor(
 
     // Render blinking cursors (all cursors, not just primary)
     let time = ui.ctx().input(|i| i.time);
-    let cursor_visible = (time * 2.0) as u64 % 2 == 0; // blink at ~1Hz (500ms on, 500ms off)
-    // Request repaint so the cursor keeps blinking
+    let cursor_visible = ((time * 2.0) as u64).is_multiple_of(2); // blink at ~1Hz (500ms on, 500ms off)
+                                                       // Request repaint so the cursor keeps blinking
     ui.ctx()
         .request_repaint_after(std::time::Duration::from_millis(500));
     if cursor_visible {
@@ -829,8 +838,7 @@ pub fn render_editor(
                     pos.col - scroll_col
                 };
                 let x = text_left + 4.0 + col_in_row as f32 * char_width;
-                let cursor_rect =
-                    Rect::from_min_size(Pos2::new(x, y), Vec2::new(2.0, line_height));
+                let cursor_rect = Rect::from_min_size(Pos2::new(x, y), Vec2::new(2.0, line_height));
                 ui.painter()
                     .rect_filled(cursor_rect, 0.0, theme.cursor_color);
             }
@@ -1020,7 +1028,8 @@ pub fn render_editor(
         let lines_delta = -(scroll_delta.y / line_height * 3.0) as isize;
         let new_scroll = (doc.scroll_line as isize + lines_delta)
             .max(0)
-            .min(total_visual_rows.saturating_sub(visible_lines) as isize) as usize;
+            .min(total_visual_rows.saturating_sub(visible_lines) as isize)
+            as usize;
         doc.scroll_line = new_scroll;
     }
 
@@ -1311,9 +1320,9 @@ fn handle_keyboard_input(
                             snippet_engine,
                         );
                     }
-                    egui::Event::Paste(text) => {
+                    egui::Event::Paste(text)
                         // In insert mode, allow paste normally
-                        if vim_mode == VimMode::Insert && !text.is_empty() {
+                        if vim_mode == VimMode::Insert && !text.is_empty() => {
                             vim.record_insert_text(text);
                             doc.insert_text(text);
                             modified = true;
@@ -1322,9 +1331,8 @@ fn handle_keyboard_input(
                             }
                         }
                         // In other modes, vim handles yank/put internally
-                    }
-                    egui::Event::Text(text) => {
-                        if !text.chars().all(|c| c.is_control()) {
+                    egui::Event::Text(text)
+                        if !text.chars().all(|c| c.is_control()) => {
                             if vim_mode == VimMode::Insert {
                                 // Track text for vim `.` repeat
                                 vim.record_insert_text(text);
@@ -1357,7 +1365,6 @@ fn handle_keyboard_input(
                                 }
                             }
                         }
-                    }
                     _ => {}
                 }
             }
@@ -1391,17 +1398,16 @@ fn handle_keyboard_input(
                         snippet_engine,
                     );
                 }
-                egui::Event::Paste(text) => {
-                    if !text.is_empty() {
+                egui::Event::Paste(text)
+                    if !text.is_empty() => {
                         doc.insert_text(text);
                         modified = true;
                         if is_recording {
                             pending_macro_actions.push(MacroAction::Paste(text.clone()));
                         }
                     }
-                }
-                egui::Event::Text(text) => {
-                    if !text.chars().all(|c| c.is_control()) {
+                egui::Event::Text(text)
+                    if !text.chars().all(|c| c.is_control()) => {
                         handle_text_input(
                             text,
                             doc,
@@ -1410,7 +1416,6 @@ fn handle_keyboard_input(
                             &mut pending_macro_actions,
                         );
                     }
-                }
                 _ => {}
             }
         }
@@ -2085,7 +2090,11 @@ fn ensure_cursor_visible_wrapped(
             }
             let vrow_count = if word_wrap {
                 let char_count = doc.buffer.line_len_chars_no_newline(line_idx);
-                if char_count == 0 { 1 } else { (char_count + wrap_cols - 1) / wrap_cols }
+                if char_count == 0 {
+                    1
+                } else {
+                    char_count.div_ceil(wrap_cols)
+                }
             } else {
                 1
             };
@@ -2094,7 +2103,11 @@ fn ensure_cursor_visible_wrapped(
         // Add sub-row offset for word wrap within the cursor's line
         if word_wrap && wrap_cols > 0 && cursor_line < total_lines {
             let char_count = doc.buffer.line_len_chars_no_newline(cursor_line);
-            let vrow_count = if char_count == 0 { 1 } else { (char_count + wrap_cols - 1) / wrap_cols };
+            let vrow_count = if char_count == 0 {
+                1
+            } else {
+                char_count.div_ceil(wrap_cols)
+            };
             vrow += (cursor_col / wrap_cols).min(vrow_count - 1);
         }
         vrow

@@ -948,11 +948,10 @@ impl OpenEditApp {
         match key {
             // Clipboard (copy is a no-op during replay, cut deletes selection)
             "C" if ctrl => { /* copy: no-op during replay */ }
-            "X" if ctrl => {
-                if doc.cursors.primary().has_selection() {
+            "X" if ctrl
+                && doc.cursors.primary().has_selection() => {
                     doc.delete_selection_public();
                 }
-            }
             // Line operations
             "ArrowUp" if alt => {
                 doc.move_line_up();
@@ -1009,11 +1008,10 @@ impl OpenEditApp {
             "D" if ctrl => {
                 doc.select_next_occurrence();
             }
-            "Escape" => {
-                if doc.cursors.cursor_count() > 1 {
+            "Escape"
+                if doc.cursors.cursor_count() > 1 => {
                     doc.cursors.clear_extra_cursors();
                 }
-            }
             _ => {}
         }
     }
@@ -1459,36 +1457,31 @@ impl OpenEditApp {
                     self.macro_recorder.start_recording();
                 }
             }
-            "macro.playback" => {
-                if !self.macro_recorder.is_recording() {
+            "macro.playback"
+                if !self.macro_recorder.is_recording() => {
                     self.replay_macro();
                 }
-            }
-            "macro.run_multiple" => {
+            "macro.run_multiple"
                 if !self.macro_recorder.is_recording()
                     && !self.macro_recorder.last_recorded().is_empty()
-                {
+                => {
                     self.macro_run_n_open = true;
                     self.macro_run_n_input.clear();
                 }
-            }
-            "macro.save_as" => {
-                if !self.macro_recorder.last_recorded().is_empty() {
+            "macro.save_as"
+                if !self.macro_recorder.last_recorded().is_empty() => {
                     self.macro_save_as_open = true;
                     self.macro_save_as_input.clear();
                 }
-            }
-            "macro.load" => {
-                if !self.macro_recorder.macro_names().is_empty() {
+            "macro.load"
+                if !self.macro_recorder.macro_names().is_empty() => {
                     self.macro_load_open = true;
                     self.macro_load_selected = None;
                 }
-            }
-            "macro.edit_last" => {
-                if !self.macro_recorder.last_recorded().is_empty() {
+            "macro.edit_last"
+                if !self.macro_recorder.last_recorded().is_empty() => {
                     self.open_macro_script_tab();
                 }
-            }
             "edit.column_editor" => {
                 self.column_editor_open = true;
                 // Pre-fill from selection if available
@@ -1519,8 +1512,8 @@ impl OpenEditApp {
                     doc.folding.unfold_all();
                 }
             }
-            "view.compare_files" => {
-                if self.documents.len() >= 2 {
+            "view.compare_files"
+                if self.documents.len() >= 2 => {
                     self.diff_state.active = true;
                     self.diff_state.left_tab = self.active_tab;
                     self.diff_state.right_tab = (self.active_tab + 1) % self.documents.len();
@@ -1529,28 +1522,24 @@ impl OpenEditApp {
                     self.diff_state.diff_ops = openedit_core::diff::diff_lines(&left, &right);
                     self.diff_state.scroll_offset = 0.0;
                 }
-            }
             "view.close_compare" => {
                 self.diff_state.active = false;
             }
-            "diff.next_hunk" => {
-                if self.diff_state.active {
+            "diff.next_hunk"
+                if self.diff_state.active => {
                     let line_height = crate::editor_view::line_height_for_font(self.font_size);
                     diff_view::navigate_next_hunk(&mut self.diff_state, line_height);
                 }
-            }
-            "diff.prev_hunk" => {
-                if self.diff_state.active {
+            "diff.prev_hunk"
+                if self.diff_state.active => {
                     let line_height = crate::editor_view::line_height_for_font(self.font_size);
                     diff_view::navigate_prev_hunk(&mut self.diff_state, line_height);
                 }
-            }
-            "hex.go_to_offset" => {
-                if self.hex_view_state.active {
+            "hex.go_to_offset"
+                if self.hex_view_state.active => {
                     self.hex_view_state.go_to_offset_open = true;
                     self.hex_view_state.go_to_offset_input.clear();
                 }
-            }
             "view.toggle_terminal" => {
                 if !self.terminal_state.visible {
                     self.terminal_state.visible = true;
@@ -2196,9 +2185,7 @@ impl eframe::App for OpenEditApp {
         }
 
         // Handle drag & drop files
-        let dropped: Vec<egui::DroppedFile> = ctx.input(|i| {
-            i.raw.dropped_files.clone()
-        });
+        let dropped: Vec<egui::DroppedFile> = ctx.input(|i| i.raw.dropped_files.clone());
         for file in dropped {
             if let Some(path) = file.path {
                 // Desktop backend: path is available directly

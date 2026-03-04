@@ -215,10 +215,7 @@ pub fn render_markdown_preview(
                     let code_y = y + 8.0;
                     for (i, line) in code_lines.iter().enumerate() {
                         ui.painter().text(
-                            Pos2::new(
-                                rect.left() + padding + 8.0,
-                                code_y + i as f32 * line_height,
-                            ),
+                            Pos2::new(rect.left() + padding + 8.0, code_y + i as f32 * line_height),
                             egui::Align2::LEFT_TOP,
                             line,
                             font.clone(),
@@ -281,11 +278,9 @@ pub fn render_markdown_preview(
                 if y + line_height > clip_rect.top() && y < clip_rect.bottom() {
                     let bx = rect.left() + padding + indent;
                     // Draw the bullet/number
-                    let bullet_galley = ui.painter().layout_no_wrap(
-                        bullet.clone(),
-                        bullet_font,
-                        theme.foreground,
-                    );
+                    let bullet_galley =
+                        ui.painter()
+                            .layout_no_wrap(bullet.clone(), bullet_font, theme.foreground);
                     let bullet_width = bullet_galley.rect.width();
                     ui.painter()
                         .galley(Pos2::new(bx, y), bullet_galley, theme.foreground);
@@ -457,8 +452,7 @@ pub fn render_markdown_preview(
 
                     // Render header cells
                     for (col_idx, cell_spans) in header.iter().enumerate() {
-                        let cx =
-                            table_x + cell_pad + col_idx as f32 * col_width;
+                        let cx = table_x + cell_pad + col_idx as f32 * col_width;
                         let text = RichSpan::flat_text(cell_spans);
                         let align = alignments.get(col_idx).copied().unwrap_or(Alignment::None);
                         let font = egui::FontId::proportional(font_size);
@@ -471,13 +465,8 @@ pub fn render_markdown_preview(
                             font_size,
                         );
                         // Bold header text
-                        let galley = ui.painter().layout_no_wrap(
-                            text,
-                            font,
-                            theme.foreground,
-                        );
-                        ui.painter()
-                            .galley(text_pos, galley, theme.foreground);
+                        let galley = ui.painter().layout_no_wrap(text, font, theme.foreground);
+                        ui.painter().galley(text_pos, galley, theme.foreground);
                     }
 
                     // Header bottom line
@@ -512,8 +501,7 @@ pub fn render_markdown_preview(
                         for (col_idx, cell_spans) in row.iter().enumerate() {
                             let cx = table_x + cell_pad + col_idx as f32 * col_width;
                             let text = RichSpan::flat_text(cell_spans);
-                            let align =
-                                alignments.get(col_idx).copied().unwrap_or(Alignment::None);
+                            let align = alignments.get(col_idx).copied().unwrap_or(Alignment::None);
                             let font = egui::FontId::proportional(font_size);
                             let text_pos = aligned_text_pos(
                                 cx,
@@ -523,13 +511,8 @@ pub fn render_markdown_preview(
                                 align,
                                 font_size,
                             );
-                            let galley = ui.painter().layout_no_wrap(
-                                text,
-                                font,
-                                theme.foreground,
-                            );
-                            ui.painter()
-                                .galley(text_pos, galley, theme.foreground);
+                            let galley = ui.painter().layout_no_wrap(text, font, theme.foreground);
+                            ui.painter().galley(text_pos, galley, theme.foreground);
                         }
 
                         // Row bottom line
@@ -547,10 +530,7 @@ pub fn render_markdown_preview(
                     for col_idx in 1..num_cols {
                         let cx = table_x + col_idx as f32 * col_width;
                         ui.painter().line_segment(
-                            [
-                                Pos2::new(cx, y),
-                                Pos2::new(cx, y + table_height),
-                            ],
+                            [Pos2::new(cx, y), Pos2::new(cx, y + table_height)],
                             egui::Stroke::new(0.5, theme.gutter_fg),
                         );
                     }
@@ -644,15 +624,15 @@ fn render_rich_spans(
             // we draw a line over it after painting.
         }
 
-        let galley = ui.painter().layout_no_wrap(text.clone(), font.clone(), color);
+        let galley = ui
+            .painter()
+            .layout_no_wrap(text.clone(), font.clone(), color);
         let gw = galley.rect.width();
 
         // Inline code background
         if span.code {
-            let bg_rect = Rect::from_min_size(
-                Pos2::new(cx - 2.0, y),
-                Vec2::new(gw + 4.0, font_size + 2.0),
-            );
+            let bg_rect =
+                Rect::from_min_size(Pos2::new(cx - 2.0, y), Vec2::new(gw + 4.0, font_size + 2.0));
             ui.painter().rect_filled(bg_rect, 3.0, inline_code_bg);
         }
 
@@ -660,11 +640,10 @@ fn render_rich_spans(
 
         // Draw bold by painting again with a 1px offset (egui doesn't have bold fonts)
         if span.bold || force_bold {
-            let galley2 =
-                ui.painter()
-                    .layout_no_wrap(text.clone(), font.clone(), color);
-            ui.painter()
-                .galley(Pos2::new(cx + 0.5, y), galley2, color);
+            let galley2 = ui
+                .painter()
+                .layout_no_wrap(text.clone(), font.clone(), color);
+            ui.painter().galley(Pos2::new(cx + 0.5, y), galley2, color);
         }
 
         // Italic: draw with a slight shear (approximation)
@@ -744,7 +723,9 @@ fn render_rich_spans_wrapped(
             cy += line_height;
         }
 
-        let galley = ui.painter().layout_no_wrap(word.text.clone(), font.clone(), color);
+        let galley = ui
+            .painter()
+            .layout_no_wrap(word.text.clone(), font.clone(), color);
         let gw = galley.rect.width();
 
         // Inline code background
@@ -756,14 +737,13 @@ fn render_rich_spans_wrapped(
             ui.painter().rect_filled(bg_rect, 3.0, inline_code_bg);
         }
 
-        ui.painter()
-            .galley(Pos2::new(x + cx, cy), galley, color);
+        ui.painter().galley(Pos2::new(x + cx, cy), galley, color);
 
         // Bold: overlay slightly offset
         if word.bold {
-            let galley2 =
-                ui.painter()
-                    .layout_no_wrap(word.text.clone(), font.clone(), color);
+            let galley2 = ui
+                .painter()
+                .layout_no_wrap(word.text.clone(), font.clone(), color);
             ui.painter()
                 .galley(Pos2::new(x + cx + 0.5, cy), galley2, color);
         }
@@ -772,10 +752,7 @@ fn render_rich_spans_wrapped(
         if word.strikethrough {
             let mid_y = cy + font_size / 2.0;
             ui.painter().line_segment(
-                [
-                    Pos2::new(x + cx, mid_y),
-                    Pos2::new(x + cx + gw, mid_y),
-                ],
+                [Pos2::new(x + cx, mid_y), Pos2::new(x + cx + gw, mid_y)],
                 egui::Stroke::new(1.0, color),
             );
         }
@@ -784,10 +761,7 @@ fn render_rich_spans_wrapped(
         if word.link_url.is_some() {
             let ul_y = cy + font_size + 1.0;
             ui.painter().line_segment(
-                [
-                    Pos2::new(x + cx, ul_y),
-                    Pos2::new(x + cx + gw, ul_y),
-                ],
+                [Pos2::new(x + cx, ul_y), Pos2::new(x + cx + gw, ul_y)],
                 egui::Stroke::new(1.0, link_color),
             );
         }
@@ -934,12 +908,11 @@ fn parse_to_blocks(parser: Parser) -> Vec<MdBlock> {
             }
 
             // ── Paragraphs ──────────────────────────────────────
-            Event::Start(Tag::Paragraph) => {
-                if !in_table_cell && !in_image {
+            Event::Start(Tag::Paragraph)
+                if !in_table_cell && !in_image => {
                     _in_paragraph = true;
                     span_stack.clear();
                 }
-            }
             Event::End(TagEnd::Paragraph) => {
                 if in_image {
                     // Paragraph inside image tag — ignore; image handled separately
@@ -1122,11 +1095,10 @@ fn parse_to_blocks(parser: Parser) -> Vec<MdBlock> {
             Event::Start(Tag::TableRow) => {
                 table_current_row.clear();
             }
-            Event::End(TagEnd::TableRow) => {
-                if !in_table_head {
+            Event::End(TagEnd::TableRow)
+                if !in_table_head => {
                     table_rows.push(std::mem::take(&mut table_current_row));
                 }
-            }
             Event::Start(Tag::TableCell) => {
                 in_table_cell = true;
                 span_stack.clear();

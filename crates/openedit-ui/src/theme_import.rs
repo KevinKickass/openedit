@@ -514,21 +514,18 @@ fn parse_npp_global_widget_style(
                 colors.background = bg;
             }
         }
-        "Caret colour" => {
-            if colors.cursor.is_none() {
+        "Caret colour"
+            if colors.cursor.is_none() => {
                 colors.cursor = fg;
             }
-        }
-        "Current line background colour" => {
-            if colors.current_line_bg.is_none() {
+        "Current line background colour"
+            if colors.current_line_bg.is_none() => {
                 colors.current_line_bg = bg;
             }
-        }
-        "Selected text colour" => {
-            if colors.selection_bg.is_none() {
+        "Selected text colour"
+            if colors.selection_bg.is_none() => {
                 colors.selection_bg = bg;
             }
-        }
         "Line number" => {
             if colors.gutter_fg.is_none() {
                 colors.gutter_fg = fg;
@@ -537,16 +534,14 @@ fn parse_npp_global_widget_style(
                 colors.gutter_bg = bg;
             }
         }
-        "Find Mark Style" | "Mark Style 1" => {
-            if colors.search_match_bg.is_none() {
+        "Find Mark Style" | "Mark Style 1"
+            if colors.search_match_bg.is_none() => {
                 colors.search_match_bg = bg;
             }
-        }
-        "Smart Highlighting" | "Incremental highlight all" => {
-            if colors.search_current_match_bg.is_none() {
+        "Smart Highlighting" | "Incremental highlight all"
+            if colors.search_current_match_bg.is_none() => {
                 colors.search_current_match_bg = bg.or(fg);
             }
-        }
         _ => {}
     }
 }

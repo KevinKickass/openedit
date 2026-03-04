@@ -119,8 +119,8 @@ fn load_directory_children(dir: &PathBuf) -> Vec<FileTreeNode> {
     }
 
     // Sort alphabetically (case-insensitive)
-    dirs.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    files.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    dirs.sort_by_key(|a| a.name.to_lowercase());
+    files.sort_by_key(|a| a.name.to_lowercase());
 
     // Directories first, then files
     dirs.extend(files);
@@ -206,11 +206,7 @@ fn render_tree_node(
                     .sense(egui::Sense::click()),
             );
 
-            let folder_icon = if node.expanded {
-                "[-]"
-            } else {
-                "[+]"
-            };
+            let folder_icon = if node.expanded { "[-]" } else { "[+]" };
             let label_response = ui.add(
                 egui::Label::new(
                     egui::RichText::new(format!("{} {}", folder_icon, &node.name))

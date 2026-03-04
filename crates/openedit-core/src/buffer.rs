@@ -340,9 +340,7 @@ impl Buffer {
     pub fn to_string(&self) -> String {
         match &self.inner {
             BufferInner::Rope(r) => r.to_string(),
-            BufferInner::LargeFile { data, .. } => {
-                String::from_utf8_lossy(data).into_owned()
-            }
+            BufferInner::LargeFile { data, .. } => String::from_utf8_lossy(data).into_owned(),
         }
     }
 

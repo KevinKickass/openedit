@@ -807,9 +807,7 @@ impl Document {
         if n > MAX_FOLD_LINES {
             return;
         }
-        let lines: Vec<String> = (0..n)
-            .map(|i| self.buffer.line(i).to_string())
-            .collect();
+        let lines: Vec<String> = (0..n).map(|i| self.buffer.line(i).to_string()).collect();
         self.folding.compute_fold_ranges(&lines);
     }
 
