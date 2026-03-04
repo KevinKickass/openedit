@@ -2164,15 +2164,28 @@ impl eframe::App for OpenEditApp {
         }
 
         // Handle drag & drop files
-        let dropped: Vec<PathBuf> = ctx.input(|i| {
-            i.raw
-                .dropped_files
-                .iter()
-                .filter_map(|f| f.path.clone())
-                .collect()
+        let dropped: Vec<egui::DroppedFile> = ctx.input(|i| {
+            i.raw.dropped_files.clone()
         });
-        for path in dropped {
-            self.open_file(path);
+        for file in dropped {
+            if let Some(path) = file.path {
+                // Desktop backend: path is available directly
+                self.open_file(path);
+            } else if let Some(bytes) = file.bytes {
+                // Web backend or path unavailable: create buffer from bytes
+                let text = String::from_utf8_lossy(&bytes);
+                let mut doc = Document::new();
+                doc.buffer = Buffer::from_str(&text);
+                // Use the file name (without path) as a display hint
+                if !file.name.is_empty() {
+                    let name_path = PathBuf::from(&file.name);
+                    if let Some(ext) = name_path.extension().and_then(|e| e.to_str()) {
+                        doc.language = Some(language_from_extension(ext));
+                    }
+                }
+                self.documents.push(doc);
+                self.active_tab = self.documents.len() - 1;
+            }
         }
 
         // Check for external file modifications
