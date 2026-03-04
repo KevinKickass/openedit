@@ -811,21 +811,29 @@ pub fn render_editor(
         doc.scroll_line = target.min(total_visual_rows.saturating_sub(visible_lines));
     }
 
-    // Render cursors (all cursors, not just primary)
-    for cursor in doc.cursors.cursors() {
-        let pos = cursor.position;
-        if let Some(screen_row) = pos_to_screen_row(pos.line, pos.col) {
-            let y = rect.top() + screen_row as f32 * line_height;
-            let col_in_row = if word_wrap {
-                let vr = &displayed_vrows[screen_row].1;
-                pos.col - vr.col_offset
-            } else {
-                pos.col - scroll_col
-            };
-            let x = text_left + 4.0 + col_in_row as f32 * char_width;
-            let cursor_rect = Rect::from_min_size(Pos2::new(x, y), Vec2::new(2.0, line_height));
-            ui.painter()
-                .rect_filled(cursor_rect, 0.0, theme.cursor_color);
+    // Render blinking cursors (all cursors, not just primary)
+    let time = ui.ctx().input(|i| i.time);
+    let cursor_visible = (time * 2.0) as u64 % 2 == 0; // blink at ~1Hz (500ms on, 500ms off)
+    // Request repaint so the cursor keeps blinking
+    ui.ctx()
+        .request_repaint_after(std::time::Duration::from_millis(500));
+    if cursor_visible {
+        for cursor in doc.cursors.cursors() {
+            let pos = cursor.position;
+            if let Some(screen_row) = pos_to_screen_row(pos.line, pos.col) {
+                let y = rect.top() + screen_row as f32 * line_height;
+                let col_in_row = if word_wrap {
+                    let vr = &displayed_vrows[screen_row].1;
+                    pos.col - vr.col_offset
+                } else {
+                    pos.col - scroll_col
+                };
+                let x = text_left + 4.0 + col_in_row as f32 * char_width;
+                let cursor_rect =
+                    Rect::from_min_size(Pos2::new(x, y), Vec2::new(2.0, line_height));
+                ui.painter()
+                    .rect_filled(cursor_rect, 0.0, theme.cursor_color);
+            }
         }
     }
 
@@ -907,6 +915,36 @@ pub fn render_editor(
                 }
             } else {
                 doc.cursors.primary_mut().move_to(doc_pos, true);
+            }
+        }
+    }
+
+    // Simple click (no drag movement) — position cursor and clear selection
+    if response.clicked() && !view_state.dragging {
+        let click_shift = ui.input(|i| i.modifiers.shift);
+        let click_pointer = ui.input(|i| i.pointer.interact_pos());
+        if let Some(pos) = click_pointer {
+            if pos.x >= text_left {
+                // Inline position calculation (avoids extending mouse_to_doc_pos borrow)
+                let screen_row = ((pos.y - rect.top()) / line_height) as usize;
+                let (line_idx, col_offset) = displayed_vrows
+                    .iter()
+                    .find(|(r, _)| *r == screen_row)
+                    .map(|&(_, vr)| (vr.line_idx, vr.col_offset))
+                    .unwrap_or_else(|| {
+                        displayed_vrows
+                            .last()
+                            .map(|&(_, vr)| (vr.line_idx, vr.col_offset))
+                            .unwrap_or((0, 0))
+                    });
+                let raw_col =
+                    (((pos.x - text_left - 4.0) / char_width).round() as isize).max(0) as usize;
+                let col = col_offset + raw_col + (if word_wrap { 0 } else { scroll_col });
+                let line = line_idx.min(total_lines.saturating_sub(1));
+                let col = col.min(doc.buffer.line_len_chars_no_newline(line));
+                let doc_pos = Position::new(line, col);
+                doc.cursors.clear_extra_cursors();
+                doc.cursors.primary_mut().move_to(doc_pos, click_shift);
             }
         }
     }

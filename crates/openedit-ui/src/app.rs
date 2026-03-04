@@ -2633,11 +2633,14 @@ impl eframe::App for OpenEditApp {
             .documents
             .iter()
             .map(|d| {
-                let name = if macro_script_id == Some(d.id) {
+                let mut name = if macro_script_id == Some(d.id) {
                     "[Macro Script]".to_string()
                 } else {
                     d.display_name()
                 };
+                if d.read_only {
+                    name.push_str(" (read only)");
+                }
                 (
                     name,
                     d.modified,
