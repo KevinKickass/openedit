@@ -751,9 +751,10 @@ pub fn render_editor(
                     doc.cursors.primary_mut().move_to(doc_pos, false);
                     view_state.dragging = true;
                 } else {
-                    // Normal drag
+                    // Normal drag — clear any block selection cursors
                     view_state.block_selecting = false;
                     view_state.block_select_start = None;
+                    doc.cursors.clear_extra_cursors();
                     doc.cursors.primary_mut().move_to(doc_pos, shift);
                     view_state.dragging = true;
                 }

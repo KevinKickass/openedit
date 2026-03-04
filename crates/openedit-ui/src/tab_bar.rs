@@ -68,16 +68,15 @@ pub fn render_tab_bar(
                     let tab_resp =
                         ui.add(egui::Label::new(text).sense(egui::Sense::click_and_drag()));
 
-                    // Close button
+                    // Close button — use a Button so it gets its own interaction rect
                     let close_text =
                         egui::RichText::new(" \u{00D7}") // ×
                             .color(theme.tab_text.linear_multiply(0.6))
                             .size(13.0);
-                    if ui
-                        .add(egui::Label::new(close_text).sense(egui::Sense::click()))
-                        .on_hover_text("Close")
-                        .clicked()
-                    {
+                    let close_btn = egui::Button::new(close_text)
+                        .frame(false)
+                        .small();
+                    if ui.add(close_btn).on_hover_text("Close").clicked() {
                         response.close = Some(i);
                     }
 
@@ -86,16 +85,8 @@ pub fn render_tab_bar(
                 .inner
             });
 
-            // Use interact() on the frame rect to get a proper clickable response
-            // for the whole tab area (including padding around labels).
-            let tab_rect_response = ui.interact(
-                resp.response.rect,
-                resp.response.id.with("tab_interact"),
-                egui::Sense::click_and_drag(),
-            );
-
-            // Handle drag start
-            if tab_rect_response.drag_started() {
+            // Handle drag start on the tab label itself
+            if resp.inner.drag_started() {
                 drag_state.dragging_tab = Some(i);
             }
 
@@ -111,14 +102,14 @@ pub fn render_tab_bar(
 
             // Click tab to activate (only if not dragging and not closing)
             if response.close != Some(i)
-                && (tab_rect_response.clicked() || resp.inner.clicked())
+                && resp.inner.clicked()
                 && drag_state.dragging_tab.is_none()
             {
                 response.activate = Some(i);
             }
 
             // Middle-click to close
-            if tab_rect_response.middle_clicked() {
+            if resp.inner.middle_clicked() {
                 response.close = Some(i);
             }
 
@@ -126,7 +117,7 @@ pub fn render_tab_bar(
             let has_path = file_path.is_some();
             let file_path_clone = file_path.clone();
             let tab_count = tabs.len();
-            tab_rect_response.context_menu(|ui| {
+            resp.inner.context_menu(|ui| {
                 if ui.button("Close Others").clicked() {
                     response.context_menu = Some((i, TabContextAction::CloseOthers));
                     ui.close_menu();

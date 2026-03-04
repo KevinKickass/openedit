@@ -4625,7 +4625,7 @@ impl eframe::App for OpenEditApp {
                         ui.label("A cross-platform text and code editor");
                         ui.label("Built with egui and Rust");
                         ui.add_space(8.0);
-                        ui.label("MIT / Apache-2.0 License");
+                        ui.label("MIT License");
                     });
                 });
             self.show_about = open;
