@@ -908,11 +908,10 @@ fn parse_to_blocks(parser: Parser) -> Vec<MdBlock> {
             }
 
             // ── Paragraphs ──────────────────────────────────────
-            Event::Start(Tag::Paragraph)
-                if !in_table_cell && !in_image => {
-                    _in_paragraph = true;
-                    span_stack.clear();
-                }
+            Event::Start(Tag::Paragraph) if !in_table_cell && !in_image => {
+                _in_paragraph = true;
+                span_stack.clear();
+            }
             Event::End(TagEnd::Paragraph) => {
                 if in_image {
                     // Paragraph inside image tag — ignore; image handled separately
@@ -1095,10 +1094,9 @@ fn parse_to_blocks(parser: Parser) -> Vec<MdBlock> {
             Event::Start(Tag::TableRow) => {
                 table_current_row.clear();
             }
-            Event::End(TagEnd::TableRow)
-                if !in_table_head => {
-                    table_rows.push(std::mem::take(&mut table_current_row));
-                }
+            Event::End(TagEnd::TableRow) if !in_table_head => {
+                table_rows.push(std::mem::take(&mut table_current_row));
+            }
             Event::Start(Tag::TableCell) => {
                 in_table_cell = true;
                 span_stack.clear();

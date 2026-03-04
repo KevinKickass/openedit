@@ -420,10 +420,9 @@ pub fn handle_terminal_input(ui: &mut egui::Ui, state: &mut TerminalState) {
 
             for event in &input.events {
                 match event {
-                    egui::Event::Text(text)
-                        if !text.chars().all(|c| c.is_control()) => {
-                            tab.send_input(text.as_bytes());
-                        }
+                    egui::Event::Text(text) if !text.chars().all(|c| c.is_control()) => {
+                        tab.send_input(text.as_bytes());
+                    }
                     egui::Event::Key {
                         key, pressed: true, ..
                     } => match key {

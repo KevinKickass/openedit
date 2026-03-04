@@ -823,7 +823,7 @@ pub fn render_editor(
     // Render blinking cursors (all cursors, not just primary)
     let time = ui.ctx().input(|i| i.time);
     let cursor_visible = ((time * 2.0) as u64).is_multiple_of(2); // blink at ~1Hz (500ms on, 500ms off)
-                                                       // Request repaint so the cursor keeps blinking
+                                                                  // Request repaint so the cursor keeps blinking
     ui.ctx()
         .request_repaint_after(std::time::Duration::from_millis(500));
     if cursor_visible {
@@ -1398,24 +1398,22 @@ fn handle_keyboard_input(
                         snippet_engine,
                     );
                 }
-                egui::Event::Paste(text)
-                    if !text.is_empty() => {
-                        doc.insert_text(text);
-                        modified = true;
-                        if is_recording {
-                            pending_macro_actions.push(MacroAction::Paste(text.clone()));
-                        }
+                egui::Event::Paste(text) if !text.is_empty() => {
+                    doc.insert_text(text);
+                    modified = true;
+                    if is_recording {
+                        pending_macro_actions.push(MacroAction::Paste(text.clone()));
                     }
-                egui::Event::Text(text)
-                    if !text.chars().all(|c| c.is_control()) => {
-                        handle_text_input(
-                            text,
-                            doc,
-                            &mut modified,
-                            is_recording,
-                            &mut pending_macro_actions,
-                        );
-                    }
+                }
+                egui::Event::Text(text) if !text.chars().all(|c| c.is_control()) => {
+                    handle_text_input(
+                        text,
+                        doc,
+                        &mut modified,
+                        is_recording,
+                        &mut pending_macro_actions,
+                    );
+                }
                 _ => {}
             }
         }
