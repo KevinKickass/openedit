@@ -741,6 +741,8 @@ pub fn render_editor(
                     view_state.ctrl_click_pos = Some(doc_pos);
                     doc.cursors.primary_mut().move_to(doc_pos, false);
                     view_state.dragging = false;
+                    view_state.block_selecting = false;
+                    view_state.block_select_start = None;
                 } else if alt {
                     // Start block/column selection
                     view_state.block_selecting = true;
@@ -776,7 +778,7 @@ pub fn render_editor(
     if response.drag_stopped() {
         view_state.dragging = false;
         view_state.block_selecting = false;
-        // Keep block_select_start so multi-cursors remain active
+        view_state.block_select_start = None;
     }
 
     // Ctrl+hover: request LSP hover info, or show diagnostic tooltip on hover

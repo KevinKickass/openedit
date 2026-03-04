@@ -14,7 +14,8 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_title("OpenEdit")
             .with_inner_size([1200.0, 800.0])
-            .with_min_inner_size([400.0, 300.0]),
+            .with_min_inner_size([400.0, 300.0])
+            .with_drag_and_drop(true),
         ..Default::default()
     };
 
