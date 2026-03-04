@@ -207,9 +207,9 @@ fn render_tree_node(
             );
 
             let folder_icon = if node.expanded {
-                "\u{1F4C2}"
+                "[-]"
             } else {
-                "\u{1F4C1}"
+                "[+]"
             };
             let label_response = ui.add(
                 egui::Label::new(
@@ -276,17 +276,17 @@ fn render_tree_node(
 fn file_icon_for_name(name: &str) -> &'static str {
     let ext = name.rsplit('.').next().unwrap_or("");
     match ext.to_lowercase().as_str() {
-        "rs" => "\u{1F9E0}",
-        "py" => "\u{1F40D}",
-        "js" | "mjs" | "cjs" => "\u{1F7E8}",
-        "ts" | "mts" | "cts" => "\u{1F7E6}",
-        "json" => "\u{1F4CB}",
-        "toml" | "yaml" | "yml" | "ini" | "cfg" => "\u{2699}",
-        "md" | "txt" | "rst" => "\u{1F4DD}",
-        "html" | "htm" => "\u{1F310}",
-        "css" | "scss" | "sass" => "\u{1F3A8}",
-        "lock" => "\u{1F512}",
-        "png" | "jpg" | "jpeg" | "gif" | "svg" | "ico" | "bmp" | "webp" => "\u{1F5BC}",
-        _ => "\u{1F4C4}",
+        "rs" => "[rs]",
+        "py" => "[py]",
+        "js" | "mjs" | "cjs" => "[js]",
+        "ts" | "mts" | "cts" => "[ts]",
+        "json" => "[{}]",
+        "toml" | "yaml" | "yml" | "ini" | "cfg" => "[cf]",
+        "md" | "txt" | "rst" => "[tx]",
+        "html" | "htm" => "[ht]",
+        "css" | "scss" | "sass" => "[cs]",
+        "lock" => "[lk]",
+        "png" | "jpg" | "jpeg" | "gif" | "svg" | "ico" | "bmp" | "webp" => "[im]",
+        _ => " ",
     }
 }

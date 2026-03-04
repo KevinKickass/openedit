@@ -1081,17 +1081,17 @@ pub fn render_lsp_autocomplete(
 
         // Kind icon
         let kind_char = match item.kind.as_deref() {
-            Some("Function") | Some("Method") => "ƒ",
-            Some("Variable") | Some("Field") => "𝑥",
-            Some("Class") | Some("Struct") => "◆",
-            Some("Interface") => "◇",
-            Some("Module") => "□",
-            Some("Keyword") => "⚷",
-            Some("Snippet") => "⟨⟩",
-            Some("Constant") | Some("EnumMember") => "π",
-            Some("Enum") => "∈",
-            Some("Property") => "◦",
-            _ => "·",
+            Some("Function") | Some("Method") => "fn",
+            Some("Variable") | Some("Field") => "var",
+            Some("Class") | Some("Struct") => "cls",
+            Some("Interface") => "ifc",
+            Some("Module") => "mod",
+            Some("Keyword") => "key",
+            Some("Snippet") => "<>",
+            Some("Constant") | Some("EnumMember") => "cst",
+            Some("Enum") => "enm",
+            Some("Property") => "prp",
+            _ => " - ",
         };
         let kind_color = match item.kind.as_deref() {
             Some("Function") | Some("Method") => egui::Color32::from_rgb(220, 220, 170),

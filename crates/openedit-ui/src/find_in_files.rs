@@ -343,7 +343,7 @@ pub fn render_find_in_files_panel(
 
             // Replace input
             ui.horizontal(|ui| {
-                ui.toggle_value(&mut state.show_replace, "↔")
+                ui.toggle_value(&mut state.show_replace, "R")
                     .on_hover_text("Toggle Replace");
                 if state.show_replace {
                     ui.label("Replace:");

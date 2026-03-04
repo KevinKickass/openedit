@@ -2730,7 +2730,7 @@ impl eframe::App for OpenEditApp {
                         ui.separator();
                         if ui
                             .button(if self.show_minimap {
-                                "✓ Minimap"
+                                "> Minimap"
                             } else {
                                 "  Minimap"
                             })
@@ -2741,7 +2741,7 @@ impl eframe::App for OpenEditApp {
                         }
                         if ui
                             .button(if self.show_line_numbers {
-                                "✓ Line Numbers"
+                                "> Line Numbers"
                             } else {
                                 "  Line Numbers"
                             })
@@ -2752,7 +2752,7 @@ impl eframe::App for OpenEditApp {
                         }
                         if ui
                             .button(if self.word_wrap {
-                                "✓ Word Wrap"
+                                "> Word Wrap"
                             } else {
                                 "  Word Wrap"
                             })
@@ -2763,7 +2763,7 @@ impl eframe::App for OpenEditApp {
                         }
                         if ui
                             .button(if self.show_markdown_preview {
-                                "✓ Markdown Preview  Ctrl+Shift+M"
+                                "> Markdown Preview  Ctrl+Shift+M"
                             } else {
                                 "  Markdown Preview  Ctrl+Shift+M"
                             })
@@ -2866,9 +2866,9 @@ impl eframe::App for OpenEditApp {
                                 let is_user = self.theme_registry.is_user_theme(name);
                                 let label = if self.theme.name == *name {
                                     if is_user {
-                                        format!("✓ {} (custom)", name)
+                                        format!("> {} (custom)", name)
                                     } else {
-                                        format!("✓ {}", name)
+                                        format!("> {}", name)
                                     }
                                 } else if is_user {
                                     format!("  {} (custom)", name)
@@ -2908,7 +2908,7 @@ impl eframe::App for OpenEditApp {
                             let current = crate::i18n::get_locale();
                             for locale in crate::i18n::Locale::all() {
                                 let label = if *locale == current {
-                                    format!("\u{2713} {}", locale.display_name())
+                                    format!("> {}", locale.display_name())
                                 } else {
                                     format!("  {}", locale.display_name())
                                 };
@@ -2921,7 +2921,7 @@ impl eframe::App for OpenEditApp {
                         });
                         if ui
                             .button(if self.vim_state.enabled {
-                                "✓ Vim Mode"
+                                "> Vim Mode"
                             } else {
                                 "  Vim Mode"
                             })
@@ -2946,7 +2946,7 @@ impl eframe::App for OpenEditApp {
                         ui.menu_button("Tab Size", |ui| {
                             for &size in &[2u32, 4, 8] {
                                 let label = if self.current_config().editor.tab_size == size {
-                                    format!("✓ {}", size)
+                                    format!("> {}", size)
                                 } else {
                                     format!("  {}", size)
                                 };
@@ -2958,7 +2958,7 @@ impl eframe::App for OpenEditApp {
                         });
                         if ui
                             .button(if self.auto_save {
-                                "✓ Auto Save"
+                                "> Auto Save"
                             } else {
                                 "  Auto Save"
                             })

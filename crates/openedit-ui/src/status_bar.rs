@@ -102,7 +102,7 @@ pub fn render_status_bar(
             } else {
                 340.0
             };
-        let branch_text = format!("⎇ {}", branch);
+        let branch_text = format!("git: {}", branch);
         ui.painter().text(
             egui::Pos2::new(git_x, bar_rect.center().y),
             egui::Align2::LEFT_CENTER,
